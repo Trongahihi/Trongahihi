@@ -1,21 +1,25 @@
 -- Script này sẽ chạy khi executor load
--- Tự lấy UserID của người chơi hiện tại
 local success, result = pcall(function()
     local userId = game:GetService("Players").LocalPlayer.UserId
-    local workspacePath = "/storage/emulated/0/Codex/workspace/"
-    local fileName = workspacePath .. tostring(userId) .. ".main"
 
-    local file = io.open(fileName, "w")
-    if file then
-        file:write("Executor loaded at " .. os.date("%Y-%m-%d %H:%M:%S"))
-        file:close()
-    else
-        warn("[AutoExec] Không thể ghi file báo hiệu vào:", fileName)
+    -- Danh sách đường dẫn workspace của các executor
+    local workspacePaths = {
+        "/storage/emulated/0/Codex/workspace/",
+        "/storage/emulated/0/RonixExploit/workspace/"
+    }
+
+    for _, workspacePath in ipairs(workspacePaths) do
+        local fileName = workspacePath .. tostring(userId) .. ".main"
+        local file = io.open(fileName, "w")
+        if file then
+            file:write("Executor loaded at " .. os.date("%Y-%m-%d %H:%M:%S"))
+            file:close()
+            print("[AutoExec] Đã tạo file báo hiệu:", fileName)
+        end
     end
 end)
 
-if success then
-    print("[AutoExec] Đã tạo file báo hiệu executor load thành công!")
-else
+if not success then
     warn("[AutoExec] Lỗi khi tạo file báo hiệu:", result)
 end
+
