@@ -1,147 +1,112 @@
--- Auto-detect workspace + keep-alive writer (robust, no path nesting)
-local Players = game:GetService("Players")
+-- Shouko.dev Executor Check Script
+-- This script creates a file to signal that the executor has loaded successfully
 
--- Wait until localplayer exists
-local localPlayer = Players.LocalPlayer
-if not localPlayer then
-    Players.PlayerAdded:Wait()
-    localPlayer = Players.LocalPlayer
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+
+-- Get the current player's UserId
+local player = Players.LocalPlayer
+if not player then
+    warn("LocalPlayer not found!")
+    return
 end
 
-local userId = tostring(localPlayer.UserId)
-local fileName = userId .. ".main"
+local userId = tostring(player.UserId)
 
--- Candidate workspace paths (thêm/ sửa nếu cần)
-local candidates = {
-    "/storage/emulated/0/RonixExploit/workspace/",
-    "/storage/emulated/0/Codex/workspace/",
+-- List of possible workspace paths where the tool looks for executor files
+local workspacePaths = {
+    "/storage/emulated/0/Fluxus/Workspace/",
     "/storage/emulated/0/Fluxus/workspace/",
+    "/storage/emulated/0/Codex/Workspace/",
+    "/storage/emulated/0/Codex/workspace/",
+    "/storage/emulated/0/Arceus X/Workspace/",
     "/storage/emulated/0/Arceus X/workspace/",
-    "/storage/emulated/0/Arceus X/workspace/", -- một vài executor có khác biệt nhỏ
+    "/storage/emulated/0/RonixExploit/Workspace/",
+    "/storage/emulated/0/RonixExploit/workspace/",
+    "/storage/emulated/0/Delta/Workspace/",
+    "/storage/emulated/0/Delta/workspace/",
+    "/storage/emulated/0/Cryptic/Workspace/",
+    "/storage/emulated/0/Cryptic/workspace/",
+    "/storage/emulated/0/krnl/Workspace/",
+    "/storage/emulated/0/krnl/workspace/",
+    "/storage/emulated/0/Trigon/Workspace/",
+    "/storage/emulated/0/Trigon/workspace/",
+    "/storage/emulated/0/Cubix/Workspace/",
+    "/storage/emulated/0/Cubix/workspace/",
+    "/storage/emulated/0/FrostWare/Workspace/",
+    "/storage/emulated/0/FrostWare/workspace/",
+    "/storage/emulated/0/Evon/Workspace/",
+    "/storage/emulated/0/Evon/workspace/",
+    "/storage/emulated/0/h202/Workspace/",
+    "/storage/emulated/0/h202/workspace/"
 }
 
--- robust detection for writefile function
-local function has_writefile()
-    if type(writefile) == "function" then return true end
-    if typeof and typeof(writefile) == "function" then return true end
-    return false
+-- Add clone paths for Codex and Arceus X (001-020 and VNG variants)
+local cloneExecutors = {"Codex", "Arceus X", "RonixExploit"}
+for _, executor in pairs(cloneExecutors) do
+    -- Regular clones
+    for i = 1, 20 do
+        local cloneNum = string.format("%03d", i)
+        table.insert(workspacePaths, "/storage/emulated/0/RobloxClone" .. cloneNum .. "/" .. executor .. "/Workspace/")
+        table.insert(workspacePaths, "/storage/emulated/0/RobloxClone" .. cloneNum .. "/" .. executor .. "/workspace/")
+    end
+    
+    -- VNG clones
+    for i = 1, 20 do
+        local cloneNum = string.format("%03d", i)
+        table.insert(workspacePaths, "/storage/emulated/0/RobloxVNGClone" .. cloneNum .. "/" .. executor .. "/Workspace/")
+        table.insert(workspacePaths, "/storage/emulated/0/RobloxVNGClone" .. cloneNum .. "/" .. executor .. "/workspace/")
+    end
 end
 
-local writefile_available = has_writefile()
-
--- try to write a temp file to test a path is writable and "real"
-local function test_path(path)
-    local tmp = path .. ".executor_check_tmp"
-    local ok = false
-    if writefile_available then
-        ok = pcall(function() writefile(tmp, "ok") end)
-        if ok then
-            pcall(function()
-                if type(delfile) == "function" then delfile(tmp) end
-                if os and os.remove then pcall(os.remove, tmp) end
-            end)
-            return true
+-- Function to create the executor check file
+local function createExecutorFile()
+    local fileName = userId .. ".main"
+    local fileContent = {
+        userId = userId,
+        username = player.Name,
+        timestamp = os.time(),
+        executor = "loaded",
+        status = "success"
+    }
+    
+    local jsonContent = HttpService:JSONEncode(fileContent)
+    
+    -- Try to write to each possible workspace path
+    for _, path in pairs(workspacePaths) do
+        local success, result = pcall(function()
+            writefile(path .. fileName, jsonContent)
+        end)
+        
+        if success then
+            print("✅ Executor check file created: " .. path .. fileName)
+            break
         end
     end
-
-    -- fallback to io.open
-    if io and io.open then
-        ok = pcall(function()
-            local f = io.open(tmp, "w")
-            if f then f:write("ok") f:close() end
-        end)
-        if ok then
-            pcall(function()
-                if type(delfile) == "function" then delfile(tmp) end
-                if os and os.remove then pcall(os.remove, tmp) end
-            end)
-            return true
-        end
-    end
-
-    return false
 end
 
--- choose the first writable candidate
-local chosen_path = nil
-for _, p in ipairs(candidates) do
-    if test_path(p) then
-        chosen_path = p
-        break
-    end
-end
-
--- fallback: if none found, use a safer common path (tool nên check thêm)
-if not chosen_path then
-    chosen_path = "/storage/emulated/0/ExecutorCheck/"
-    -- try to create by writing once
-    if not test_path(chosen_path) then
-        warn("[AutoExec] Không tìm được workspace writable. Sẽ cố ghi vào: " .. chosen_path .. " (có thể thất bại).")
-    end
-end
-
-local full_file = chosen_path .. fileName
-
--- write-alive function (tries writefile first, then io.open)
-local function write_alive()
-    local ok = false
-    if writefile_available then
-        ok = pcall(function()
-            writefile(full_file, "Executor alive at " .. os.date("%Y-%m-%d %H:%M:%S"))
-        end)
-    end
-
-    if not ok and io and io.open then
-        ok = pcall(function()
-            local f = io.open(full_file, "w")
-            if f then
-                f:write("Executor alive at " .. os.date("%Y-%m-%d %H:%M:%S"))
-                f:close()
-            end
-        end)
-    end
-
-    if not ok then
-        warn("[AutoExec] Không thể ghi file alive tại: " .. full_file)
-    else
-        -- for debug in executor console
-        -- print("[AutoExec] Wrote alive -> " .. full_file)
-    end
-end
-
--- Attempt to remove file when player leaves (best-effort)
-local function safe_remove(path)
-    pcall(function()
-        if type(delfile) == "function" then
-            delfile(path)
-        elseif os and os.remove then
-            os.remove(path)
-        end
-    end)
-end
-
--- Remove on leaving local player (if event triggers)
-Players.PlayerRemoving:Connect(function(plr)
-    if plr and tostring(plr.UserId) == userId then
-        safe_remove(full_file)
-    end
-end)
-
--- BindToClose (best-effort) to remove file when script/game shuts down
-if type(game.BindToClose) == "function" then
-    pcall(function()
-        game:BindToClose(function()
-            safe_remove(full_file)
-        end)
-    end)
-end
-
--- Main keep-alive loop: write every 5 seconds
-task.spawn(function()
+-- Function to continuously maintain the file (in case it gets deleted)
+local function maintainExecutorFile()
     while true do
-        write_alive()
-        task.wait(5)
-        -- stop if player disconnected (optional)
-        if not Players.LocalPlayer then break end
+        createExecutorFile()
+        wait(10) -- Check every 10 seconds
     end
-end)
+end
+
+-- Initial file creation
+print("🚀 Starting executor check for user: " .. player.Name .. " (ID: " .. userId .. ")")
+createExecutorFile()
+
+-- Start maintenance loop
+spawn(maintainExecutorFile)
+
+-- Optional: Add a notification to confirm the script is running
+if game:GetService("StarterGui") then
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Shouko.dev";
+        Text = "Executor check script loaded!";
+        Duration = 5;
+    })
+end
+
+print("✅ Shouko.dev executor check script initialized successfully!")
