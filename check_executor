@@ -47,36 +47,82 @@ local function createExecutorFile()
     -- Try to write to each possible workspace path
     for _, path in pairs(workspacePaths) do
         local success, result = pcall(function()
-            writefile(path .. fileName, fileContent)
+            -- Check if the directory exists first
+            if isfolder(path) then
+                writefile(path .. fileName, fileContent)
+                return true
+            end
+            return false
         end)
         
-        if success then
+        if success and result then
             print("✅ Executor check file created: " .. path .. fileName)
-            break
+            return true
         end
     end
+    
+    -- If no workspace folder found, try creating in current directory
+    local success, result = pcall(function()
+        writefile(fileName, fileContent)
+    end)
+    
+    if success then
+        print("✅ Executor check file created in current directory: " .. fileName)
+        return true
+    end
+    
+    print("❌ Failed to create executor check file anywhere")
+    return false
 end
 
 -- Function to continuously maintain the file (in case it gets deleted)
 local function maintainExecutorFile()
-    while true do
-        createExecutorFile()
-        wait(10) -- Check every 10 seconds
+    local attempts = 0
+    local maxAttempts = 3
+    
+    while attempts < maxAttempts do
+        local success = createExecutorFile()
+        if success then
+            print("🔄 Executor file maintenance active - File created successfully")
+            break
+        else
+            attempts = attempts + 1
+            print("⚠️ Attempt " .. attempts .. " failed, retrying...")
+            wait(5)
+        end
+    end
+    
+    if attempts >= maxAttempts then
+        print("❌ Failed to create executor file after " .. maxAttempts .. " attempts")
+        -- Try to notify the issue
+        if game:GetService("StarterGui") then
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "Shouko.dev - Error";
+                Text = "Failed to create executor check file!";
+                Duration = 10;
+            })
+        end
     end
 end
 
 -- Initial file creation
 print("🚀 Starting executor check for user: " .. player.Name .. " (ID: " .. userId .. ")")
-createExecutorFile()
+print("📁 Checking workspace paths...")
 
--- Start maintenance loop
-spawn(maintainExecutorFile)
+-- Print all paths being checked for debugging
+for i, path in pairs(workspacePaths) do
+    local exists = isfolder and isfolder(path) or "unknown"
+    print("Path " .. i .. ": " .. path .. " (exists: " .. tostring(exists) .. ")")
+end
+
+-- Try to create the file
+maintainExecutorFile()
 
 -- Optional: Add a notification to confirm the script is running
 if game:GetService("StarterGui") then
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "Shouko.dev";
-        Text = "Executor check script loaded!";
+        Text = "Executor check script loaded for " .. player.Name;
         Duration = 5;
     })
 end
