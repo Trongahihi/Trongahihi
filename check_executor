@@ -1,53 +1,147 @@
--- Tự động ghi file báo hiệu executor đang hoạt động
+-- Auto-detect workspace + keep-alive writer (robust, no path nesting)
 local Players = game:GetService("Players")
-local userId = Players.LocalPlayer.UserId
-local content = "Executor alive at "
-local fileNameOnly = tostring(userId) .. ".main"
 
--- Các đường dẫn workspace có thể dùng
-local workspacePaths = {
+-- Wait until localplayer exists
+local localPlayer = Players.LocalPlayer
+if not localPlayer then
+    Players.PlayerAdded:Wait()
+    localPlayer = Players.LocalPlayer
+end
+
+local userId = tostring(localPlayer.UserId)
+local fileName = userId .. ".main"
+
+-- Candidate workspace paths (thêm/ sửa nếu cần)
+local candidates = {
+    "/storage/emulated/0/RonixExploit/workspace/",
     "/storage/emulated/0/Codex/workspace/",
-    "/storage/emulated/0/RonixExploit/workspace/"
+    "/storage/emulated/0/Fluxus/workspace/",
+    "/storage/emulated/0/Arceus X/workspace/",
+    "/storage/emulated/0/Arceus X/workspace/", -- một vài executor có khác biệt nhỏ
 }
 
--- Hàm thử ghi file
-local function tryWrite(path)
-    local fullPath = path .. fileNameOnly
-    local success = false
+-- robust detection for writefile function
+local function has_writefile()
+    if type(writefile) == "function" then return true end
+    if typeof and typeof(writefile) == "function" then return true end
+    return false
+end
 
-    -- Ưu tiên writefile nếu có
-    if typeof(writefile) == "function" then
-        local ok, err = pcall(function()
-            writefile(fullPath, content .. os.date("%Y-%m-%d %H:%M:%S"))
-        end)
+local writefile_available = has_writefile()
+
+-- try to write a temp file to test a path is writable and "real"
+local function test_path(path)
+    local tmp = path .. ".executor_check_tmp"
+    local ok = false
+    if writefile_available then
+        ok = pcall(function() writefile(tmp, "ok") end)
         if ok then
-            success = true
-        else
-            warn("[AutoExec] Lỗi ghi file bằng writefile:", err)
+            pcall(function()
+                if type(delfile) == "function" then delfile(tmp) end
+                if os and os.remove then pcall(os.remove, tmp) end
+            end)
+            return true
         end
-    elseif io and io.open then
-        local file, err = io.open(fullPath, "w")
-        if file then
-            file:write(content .. os.date("%Y-%m-%d %H:%M:%S"))
-            file:close()
-            success = true
-        else
-            warn("[AutoExec] Lỗi ghi file bằng io.open:", err)
-        end
-    else
-        warn("[AutoExec] Executor không hỗ trợ ghi file.")
     end
 
-    if success then
-        print("[AutoExec] Đã ghi file báo hiệu tại:", fullPath)
+    -- fallback to io.open
+    if io and io.open then
+        ok = pcall(function()
+            local f = io.open(tmp, "w")
+            if f then f:write("ok") f:close() end
+        end)
+        if ok then
+            pcall(function()
+                if type(delfile) == "function" then delfile(tmp) end
+                if os and os.remove then pcall(os.remove, tmp) end
+            end)
+            return true
+        end
+    end
+
+    return false
+end
+
+-- choose the first writable candidate
+local chosen_path = nil
+for _, p in ipairs(candidates) do
+    if test_path(p) then
+        chosen_path = p
+        break
     end
 end
 
--- Cập nhật file mỗi 5 giây
-task.spawn(function()
-    while task.wait(5) do
-        for _, path in ipairs(workspacePaths) do
-            tryWrite(path)
+-- fallback: if none found, use a safer common path (tool nên check thêm)
+if not chosen_path then
+    chosen_path = "/storage/emulated/0/ExecutorCheck/"
+    -- try to create by writing once
+    if not test_path(chosen_path) then
+        warn("[AutoExec] Không tìm được workspace writable. Sẽ cố ghi vào: " .. chosen_path .. " (có thể thất bại).")
+    end
+end
+
+local full_file = chosen_path .. fileName
+
+-- write-alive function (tries writefile first, then io.open)
+local function write_alive()
+    local ok = false
+    if writefile_available then
+        ok = pcall(function()
+            writefile(full_file, "Executor alive at " .. os.date("%Y-%m-%d %H:%M:%S"))
+        end)
+    end
+
+    if not ok and io and io.open then
+        ok = pcall(function()
+            local f = io.open(full_file, "w")
+            if f then
+                f:write("Executor alive at " .. os.date("%Y-%m-%d %H:%M:%S"))
+                f:close()
+            end
+        end)
+    end
+
+    if not ok then
+        warn("[AutoExec] Không thể ghi file alive tại: " .. full_file)
+    else
+        -- for debug in executor console
+        -- print("[AutoExec] Wrote alive -> " .. full_file)
+    end
+end
+
+-- Attempt to remove file when player leaves (best-effort)
+local function safe_remove(path)
+    pcall(function()
+        if type(delfile) == "function" then
+            delfile(path)
+        elseif os and os.remove then
+            os.remove(path)
         end
+    end)
+end
+
+-- Remove on leaving local player (if event triggers)
+Players.PlayerRemoving:Connect(function(plr)
+    if plr and tostring(plr.UserId) == userId then
+        safe_remove(full_file)
+    end
+end)
+
+-- BindToClose (best-effort) to remove file when script/game shuts down
+if type(game.BindToClose) == "function" then
+    pcall(function()
+        game:BindToClose(function()
+            safe_remove(full_file)
+        end)
+    end)
+end
+
+-- Main keep-alive loop: write every 5 seconds
+task.spawn(function()
+    while true do
+        write_alive()
+        task.wait(5)
+        -- stop if player disconnected (optional)
+        if not Players.LocalPlayer then break end
     end
 end)
