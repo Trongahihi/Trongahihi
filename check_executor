@@ -1,25 +1,44 @@
--- Script này sẽ chạy khi executor load
-local success, result = pcall(function()
-    local userId = game:GetService("Players").LocalPlayer.UserId
+local userId = game:GetService("Players").LocalPlayer.UserId
+local fileNameOnly = tostring(userId) .. ".main"
 
-    -- Danh sách đường dẫn workspace của các executor
-    local workspacePaths = {
-        "/storage/emulated/0/Codex/workspace/",
-        "/storage/emulated/0/RonixExploit/workspace/"
-    }
+-- Các workspace paths hỗ trợ
+local workspacePaths = {
+    "/storage/emulated/0/Codex/workspace/",
+    "/storage/emulated/0/RonixExploit/workspace/"
+}
 
-    for _, workspacePath in ipairs(workspacePaths) do
-        local fileName = workspacePath .. tostring(userId) .. ".main"
-        local file = io.open(fileName, "w")
+local function tryWrite(path)
+    local fullPath = path .. fileNameOnly
+    local ok = false
+
+    -- Ưu tiên dùng writefile nếu có
+    if typeof(writefile) == "function" then
+        pcall(function()
+            writefile(fileNameOnly, "Executor loaded at " .. os.date("%Y-%m-%d %H:%M:%S"))
+            ok = true
+            print("[AutoExec] Ghi file thành công bằng writefile tại:", fullPath)
+        end)
+    end
+
+    -- Nếu writefile không tồn tại, dùng io.open
+    if not ok and io and io.open then
+        local file = io.open(fullPath, "w")
         if file then
             file:write("Executor loaded at " .. os.date("%Y-%m-%d %H:%M:%S"))
             file:close()
-            print("[AutoExec] Đã tạo file báo hiệu:", fileName)
+            ok = true
+            print("[AutoExec] Ghi file thành công bằng io.open tại:", fullPath)
+        else
+            warn("[AutoExec] Không thể mở file để ghi tại:", fullPath)
         end
+    elseif not ok then
+        warn("[AutoExec] Không hỗ trợ writefile hoặc io.open trong executor này.")
     end
-end)
 
-if not success then
-    warn("[AutoExec] Lỗi khi tạo file báo hiệu:", result)
+    return ok
 end
 
+-- Thử từng workspace
+for _, path in ipairs(workspacePaths) do
+    tryWrite(path)
+end
