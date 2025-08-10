@@ -15,34 +15,14 @@ local userId = tostring(player.UserId)
 
 -- List of possible workspace paths where the tool looks for executor files
 local workspacePaths = {
-    "/storage/emulated/0/Fluxus/Workspace/",
-    "/storage/emulated/0/Fluxus/workspace/",
     "/storage/emulated/0/Codex/Workspace/",
     "/storage/emulated/0/Codex/workspace/",
-    "/storage/emulated/0/Arceus X/Workspace/",
-    "/storage/emulated/0/Arceus X/workspace/",
     "/storage/emulated/0/RonixExploit/Workspace/",
-    "/storage/emulated/0/RonixExploit/workspace/",
-    "/storage/emulated/0/Delta/Workspace/",
-    "/storage/emulated/0/Delta/workspace/",
-    "/storage/emulated/0/Cryptic/Workspace/",
-    "/storage/emulated/0/Cryptic/workspace/",
-    "/storage/emulated/0/krnl/Workspace/",
-    "/storage/emulated/0/krnl/workspace/",
-    "/storage/emulated/0/Trigon/Workspace/",
-    "/storage/emulated/0/Trigon/workspace/",
-    "/storage/emulated/0/Cubix/Workspace/",
-    "/storage/emulated/0/Cubix/workspace/",
-    "/storage/emulated/0/FrostWare/Workspace/",
-    "/storage/emulated/0/FrostWare/workspace/",
-    "/storage/emulated/0/Evon/Workspace/",
-    "/storage/emulated/0/Evon/workspace/",
-    "/storage/emulated/0/h202/Workspace/",
-    "/storage/emulated/0/h202/workspace/"
+    "/storage/emulated/0/RonixExploit/workspace/"
 }
 
--- Add clone paths for Codex and Arceus X (001-020 and VNG variants)
-local cloneExecutors = {"Codex", "Arceus X", "RonixExploit"}
+-- Add clone paths for Codex and RonixExploit (001-020 and VNG variants)
+local cloneExecutors = {"Codex", "RonixExploit"}
 for _, executor in pairs(cloneExecutors) do
     -- Regular clones
     for i = 1, 20 do
@@ -62,20 +42,12 @@ end
 -- Function to create the executor check file
 local function createExecutorFile()
     local fileName = userId .. ".main"
-    local fileContent = {
-        userId = userId,
-        username = player.Name,
-        timestamp = os.time(),
-        executor = "loaded",
-        status = "success"
-    }
-    
-    local jsonContent = HttpService:JSONEncode(fileContent)
+    local fileContent = "executor_loaded_" .. userId .. "_" .. os.time()
     
     -- Try to write to each possible workspace path
     for _, path in pairs(workspacePaths) do
         local success, result = pcall(function()
-            writefile(path .. fileName, jsonContent)
+            writefile(path .. fileName, fileContent)
         end)
         
         if success then
