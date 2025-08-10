@@ -1,44 +1,53 @@
-local userId = game:GetService("Players").LocalPlayer.UserId
+-- Tự động ghi file báo hiệu executor đang hoạt động
+local Players = game:GetService("Players")
+local userId = Players.LocalPlayer.UserId
+local content = "Executor alive at "
 local fileNameOnly = tostring(userId) .. ".main"
 
--- Các workspace paths hỗ trợ
+-- Các đường dẫn workspace có thể dùng
 local workspacePaths = {
     "/storage/emulated/0/Codex/workspace/",
     "/storage/emulated/0/RonixExploit/workspace/"
 }
 
+-- Hàm thử ghi file
 local function tryWrite(path)
     local fullPath = path .. fileNameOnly
-    local ok = false
+    local success = false
 
-    -- Ưu tiên dùng writefile nếu có
+    -- Ưu tiên writefile nếu có
     if typeof(writefile) == "function" then
-        pcall(function()
-            writefile(fileNameOnly, "Executor loaded at " .. os.date("%Y-%m-%d %H:%M:%S"))
-            ok = true
-            print("[AutoExec] Ghi file thành công bằng writefile tại:", fullPath)
+        local ok, err = pcall(function()
+            writefile(fullPath, content .. os.date("%Y-%m-%d %H:%M:%S"))
         end)
-    end
-
-    -- Nếu writefile không tồn tại, dùng io.open
-    if not ok and io and io.open then
-        local file = io.open(fullPath, "w")
-        if file then
-            file:write("Executor loaded at " .. os.date("%Y-%m-%d %H:%M:%S"))
-            file:close()
-            ok = true
-            print("[AutoExec] Ghi file thành công bằng io.open tại:", fullPath)
+        if ok then
+            success = true
         else
-            warn("[AutoExec] Không thể mở file để ghi tại:", fullPath)
+            warn("[AutoExec] Lỗi ghi file bằng writefile:", err)
         end
-    elseif not ok then
-        warn("[AutoExec] Không hỗ trợ writefile hoặc io.open trong executor này.")
+    elseif io and io.open then
+        local file, err = io.open(fullPath, "w")
+        if file then
+            file:write(content .. os.date("%Y-%m-%d %H:%M:%S"))
+            file:close()
+            success = true
+        else
+            warn("[AutoExec] Lỗi ghi file bằng io.open:", err)
+        end
+    else
+        warn("[AutoExec] Executor không hỗ trợ ghi file.")
     end
 
-    return ok
+    if success then
+        print("[AutoExec] Đã ghi file báo hiệu tại:", fullPath)
+    end
 end
 
--- Thử từng workspace
-for _, path in ipairs(workspacePaths) do
-    tryWrite(path)
-end
+-- Cập nhật file mỗi 5 giây
+task.spawn(function()
+    while task.wait(5) do
+        for _, path in ipairs(workspacePaths) do
+            tryWrite(path)
+        end
+    end
+end)
