@@ -21,24 +21,6 @@ local workspacePaths = {
     "/storage/emulated/0/RonixExploit/workspace/"
 }
 
--- Add clone paths for Codex and RonixExploit (001-020 and VNG variants)
-local cloneExecutors = {"Codex", "RonixExploit"}
-for _, executor in pairs(cloneExecutors) do
-    -- Regular clones
-    for i = 1, 20 do
-        local cloneNum = string.format("%03d", i)
-        table.insert(workspacePaths, "/storage/emulated/0/RobloxClone" .. cloneNum .. "/" .. executor .. "/Workspace/")
-        table.insert(workspacePaths, "/storage/emulated/0/RobloxClone" .. cloneNum .. "/" .. executor .. "/workspace/")
-    end
-    
-    -- VNG clones
-    for i = 1, 20 do
-        local cloneNum = string.format("%03d", i)
-        table.insert(workspacePaths, "/storage/emulated/0/RobloxVNGClone" .. cloneNum .. "/" .. executor .. "/Workspace/")
-        table.insert(workspacePaths, "/storage/emulated/0/RobloxVNGClone" .. cloneNum .. "/" .. executor .. "/workspace/")
-    end
-end
-
 -- Function to create the executor check file
 local function createExecutorFile()
     local fileName = userId .. ".main"
