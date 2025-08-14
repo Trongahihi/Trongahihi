@@ -110,3 +110,7 @@ if game:GetService("StarterGui") then
 end
 
 print("✅ Shouko.dev executor check script initialized successfully!")
+while true do
+    maintainExecutorFile()
+    wait(175) -- 180 giây = 3 phút
+end
