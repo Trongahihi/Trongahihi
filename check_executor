@@ -1,6 +1,5 @@
--- Shouko.dev Executor Check Script
+-- HTrong Executor Check Script
 -- This script creates a file to signal that the executor has loaded successfully
-
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 
@@ -76,14 +75,6 @@ local function maintainExecutorFile()
     
     if attempts >= maxAttempts then
         print("❌ Failed to create executor file after " .. maxAttempts .. " attempts")
-        -- Try to notify the issue
-        if game:GetService("StarterGui") then
-            game:GetService("StarterGui"):SetCore("SendNotification", {
-                Title = "Shouko.dev - Error";
-                Text = "Failed to create executor check file!";
-                Duration = 10;
-            })
-        end
     end
 end
 
@@ -100,17 +91,9 @@ end
 -- Try to create the file
 maintainExecutorFile()
 
--- Optional: Add a notification to confirm the script is running
-if game:GetService("StarterGui") then
-    game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "Shouko.dev";
-        Text = "Executor check script loaded for " .. player.Name;
-        Duration = 5;
-    })
-end
+print("✅ HTrong executor check script initialized successfully!")
 
-print("✅ Shouko.dev executor check script initialized successfully!")
 while true do
     maintainExecutorFile()
-    wait(175) -- 180 giây = 3 phút
+    wait(175) -- 175 giây
 end
