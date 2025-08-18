@@ -1,99 +1,109 @@
--- HTrong Executor Check Script
--- This script creates a file to signal that the executor has loaded successfully
-local Players = game:GetService("Players")
-local HttpService = game:GetService("HttpService")
+-- Diamond Reader Script cho Shouko.dev Tool
+-- Chỉ ghi số diamond vào file
+local plr = game.Players.LocalPlayer
+local RunService = game:GetService("RunService")
 
--- Get the current player's UserId
-local player = Players.LocalPlayer
-if not player then
-    warn("LocalPlayer not found!")
-    return
-end
-
-local userId = tostring(player.UserId)
-
--- List of possible workspace paths where the tool looks for executor files
-local workspacePaths = {
-    "/storage/emulated/0/Codex/Workspace/",
-    "/storage/emulated/0/Codex/workspace/",
-    "/storage/emulated/0/RonixExploit/Workspace/",
-    "/storage/emulated/0/RonixExploit/workspace/"
-}
-
--- Function to create the executor check file
-local function createExecutorFile()
-    local fileName = userId .. ".main"
-    local fileContent = "executor_loaded_" .. userId .. "_" .. os.time()
-    
-    -- Try to write to each possible workspace path
-    for _, path in pairs(workspacePaths) do
-        local success, result = pcall(function()
-            -- Check if the directory exists first
-            if isfolder(path) then
-                writefile(path .. fileName, fileContent)
-                return true
-            end
-            return false
-        end)
-        
-        if success and result then
-            print("✅ Executor check file created: " .. path .. fileName)
-            return true
-        end
-    end
-    
-    -- If no workspace folder found, try creating in current directory
-    local success, result = pcall(function()
-        writefile(fileName, fileContent)
+-- Chờ GUI load
+local function waitForGUI()
+    local success, gui = pcall(function()
+        return plr.PlayerGui:WaitForChild("Interface"):WaitForChild("DiamondCount"):WaitForChild("Count")
     end)
     
     if success then
-        print("✅ Executor check file created in current directory: " .. fileName)
-        return true
+        return gui
+    else
+        warn("Không thể tìm thấy Diamond GUI!")
+        return nil
     end
-    
-    print("❌ Failed to create executor check file anywhere")
-    return false
 end
 
--- Function to continuously maintain the file (in case it gets deleted)
-local function maintainExecutorFile()
-    local attempts = 0
-    local maxAttempts = 3
+-- Đọc số kim cương từ GUI
+local function getDiamondCount(gui)
+    if gui and gui.Text then
+        -- Loại bỏ ký tự không phải số (ví dụ: dấu phay, chữ K, M)
+        local cleanText = string.gsub(gui.Text, "[^%d]", "")
+        local diamondCount = tonumber(cleanText) or 0
+        return diamondCount
+    end
+    return 0
+end
+
+-- Ghi chỉ số diamond vào file
+local function saveDiamondToFile(userId, diamondCount)
+    local fileName = userId .. ".main"
+    local data = tostring(diamondCount) -- Chỉ ghi số diamond
     
-    while attempts < maxAttempts do
-        local success = createExecutorFile()
-        if success then
-            print("🔄 Executor file maintenance active - File created successfully")
-            break
-        else
-            attempts = attempts + 1
-            print("⚠️ Attempt " .. attempts .. " failed, retrying...")
-            wait(5)
+    if writefile then
+        writefile(fileName, data)
+        print("✅ Đã lưu diamond: " .. data)
+    elseif syn and syn.write_file then
+        -- Synapse X support
+        syn.write_file(fileName, data)
+        print("✅ Đã lưu diamond (Synapse): " .. data)
+    else
+        print("⚠️ Executor không hỗ trợ writefile")
+        print("📝 Copy số này và lưu vào file " .. fileName .. ": " .. data)
+    end
+end
+
+-- Main function
+local function startDiamondMonitor()
+    print("🔍 Khởi động Diamond Monitor...")
+    print("🏷️ Tool: Shouko.dev Auto Change Account")
+    
+    local gui = waitForGUI()
+    if not gui then
+        return
+    end
+    
+    local userId = plr.UserId
+    local lastDiamondCount = 0
+    local updateInterval = 5 -- Cập nhật mỗi 5 giây
+    local lastUpdateTime = 0
+    
+    print("💎 Diamond Monitor đã khởi động!")
+    print("👤 User ID: " .. userId)
+    
+    -- Theo dõi thay đổi kim cương
+    RunService.Heartbeat:Connect(function()
+        local currentTime = tick()
+        
+        if currentTime - lastUpdateTime >= updateInterval then
+            local currentDiamonds = getDiamondCount(gui)
+            
+            if currentDiamonds ~= lastDiamondCount then
+                lastDiamondCount = currentDiamonds
+                saveDiamondToFile(userId, currentDiamonds)
+                print("💎 Kim cương hiện tại: " .. currentDiamonds)
+            end
+            
+            lastUpdateTime = currentTime
+        end
+    end)
+    
+    -- Lưu dữ liệu ban đầu
+    local initialDiamonds = getDiamondCount(gui)
+    saveDiamondToFile(userId, initialDiamonds)
+    print("💎 Kim cương ban đầu: " .. initialDiamonds)
+end
+
+-- Khởi động monitor
+startDiamondMonitor()
+
+-- Command kiểm tra diamond thủ công
+game.Players.LocalPlayer.Chatted:Connect(function(msg)
+    if msg:lower() == "/checkdiamond" then
+        local gui = plr.PlayerGui:FindFirstChild("Interface")
+        if gui then
+            gui = gui:FindFirstChild("DiamondCount")
+            if gui then
+                gui = gui:FindFirstChild("Count")
+                if gui then
+                    local diamonds = getDiamondCount(gui)
+                    print("💎 Số kim cương hiện tại: " .. diamonds)
+                    saveDiamondToFile(plr.UserId, diamonds)
+                end
+            end
         end
     end
-    
-    if attempts >= maxAttempts then
-        print("❌ Failed to create executor file after " .. maxAttempts .. " attempts")
-    end
-end
-
--- Initial file creation
-print("🚀 Starting executor check for user: " .. player.Name .. " (ID: " .. userId .. ")")
-print("📁 Checking workspace paths...")
-
--- Print all paths being checked for debugging
-for i, path in pairs(workspacePaths) do
-    local exists = isfolder and isfolder(path) or "unknown"
-    print("Path " .. i .. ": " .. path .. " (exists: " .. tostring(exists) .. ")")
-end
-
--- Try to create the file
-maintainExecutorFile()
-
-print("✅ HTrong executor check script initialized successfully!")
-
-while true do
-    maintainExecutorFile()
-    wait(175) -- 175 giây
-end
+end)
