@@ -58,11 +58,12 @@ local function startDiamondMonitor()
     
     local userId = plr.UserId
     local lastDiamondCount = 0
-    local updateInterval = 5 -- Cập nhật mỗi 5 giây
+    local updateInterval = 175 -- Lặp lại mỗi 175 giây giống tool
     local lastUpdateTime = 0
     
     print("💎 Diamond Monitor đã khởi động!")
     print("👤 User ID: " .. userId)
+    print("⏰ Cập nhật mỗi 175 giây")
     
     -- Theo dõi thay đổi kim cương
     RunService.Heartbeat:Connect(function()
@@ -71,12 +72,16 @@ local function startDiamondMonitor()
         if currentTime - lastUpdateTime >= updateInterval then
             local currentDiamonds = getDiamondCount(gui)
             
+            -- Luôn cập nhật file mỗi 175s (giống tool Python)
+            saveDiamondToFile(userId, currentDiamonds)
+            
             if currentDiamonds ~= lastDiamondCount then
-                lastDiamondCount = currentDiamonds
-                saveDiamondToFile(userId, currentDiamonds)
-                print("💎 Kim cương hiện tại: " .. currentDiamonds)
+                print("💎 Kim cương thay đổi: " .. lastDiamondCount .. " → " .. currentDiamonds)
+            else
+                print("💎 Kim cương hiện tại: " .. currentDiamonds .. " (cập nhật định kỳ)")
             end
             
+            lastDiamondCount = currentDiamonds
             lastUpdateTime = currentTime
         end
     end)
