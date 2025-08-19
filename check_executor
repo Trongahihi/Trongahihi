@@ -1,114 +1,60 @@
 -- Diamond Reader Script cho Shouko.dev Tool
--- Chỉ ghi số diamond vào file
+-- Chỉ ghi "userid:main" vào file mỗi 175s
 local plr = game.Players.LocalPlayer
 local RunService = game:GetService("RunService")
 
--- Chờ GUI load
-local function waitForGUI()
-    local success, gui = pcall(function()
-        return plr.PlayerGui:WaitForChild("Interface"):WaitForChild("DiamondCount"):WaitForChild("Count")
-    end)
-    
-    if success then
-        return gui
-    else
-        warn("Không thể tìm thấy Diamond GUI!")
-        return nil
-    end
-end
-
--- Đọc số kim cương từ GUI
-local function getDiamondCount(gui)
-    if gui and gui.Text then
-        -- Loại bỏ ký tự không phải số (ví dụ: dấu phay, chữ K, M)
-        local cleanText = string.gsub(gui.Text, "[^%d]", "")
-        local diamondCount = tonumber(cleanText) or 0
-        return diamondCount
-    end
-    return 0
-end
-
--- Ghi chỉ số diamond vào file
-local function saveDiamondToFile(userId, diamondCount)
+-- Ghi userid:main vào file
+local function saveUserIdToFile(userId)
     local fileName = userId .. ".main"
-    local data = tostring(diamondCount) -- Chỉ ghi số diamond
+    local data = userId .. ":main"
     
     if writefile then
         writefile(fileName, data)
-        print("✅ Đã lưu diamond: " .. data)
+        print("✅ Đã lưu: " .. data)
     elseif syn and syn.write_file then
         -- Synapse X support
         syn.write_file(fileName, data)
-        print("✅ Đã lưu diamond (Synapse): " .. data)
+        print("✅ Đã lưu (Synapse): " .. data)
     else
         print("⚠️ Executor không hỗ trợ writefile")
-        print("📝 Copy số này và lưu vào file " .. fileName .. ": " .. data)
+        print("📝 Copy và lưu vào file " .. fileName .. ": " .. data)
     end
 end
 
 -- Main function
-local function startDiamondMonitor()
-    print("🔍 Khởi động Diamond Monitor...")
+local function startSimpleMonitor()
+    print("🔍 Khởi động Simple Monitor...")
     print("🏷️ Tool: Shouko.dev Auto Change Account")
     
-    local gui = waitForGUI()
-    if not gui then
-        return
-    end
-    
     local userId = plr.UserId
-    local lastDiamondCount = 0
-    local updateInterval = 175 -- Lặp lại mỗi 175 giây giống tool
+    local updateInterval = 175 -- Lặp lại mỗi 175 giây
     local lastUpdateTime = 0
     
-    print("💎 Diamond Monitor đã khởi động!")
     print("👤 User ID: " .. userId)
-    print("⏰ Cập nhật mỗi 175 giây")
+    print("⏰ Ghi file mỗi 175 giây")
+    print("📄 Nội dung: " .. userId .. ":main")
     
-    -- Theo dõi thay đổi kim cương
+    -- Lưu lần đầu
+    saveUserIdToFile(userId)
+    
+    -- Lặp lại mỗi 175 giây
     RunService.Heartbeat:Connect(function()
         local currentTime = tick()
         
         if currentTime - lastUpdateTime >= updateInterval then
-            local currentDiamonds = getDiamondCount(gui)
-            
-            -- Luôn cập nhật file mỗi 175s (giống tool Python)
-            saveDiamondToFile(userId, currentDiamonds)
-            
-            if currentDiamonds ~= lastDiamondCount then
-                print("💎 Kim cương thay đổi: " .. lastDiamondCount .. " → " .. currentDiamonds)
-            else
-                print("💎 Kim cương hiện tại: " .. currentDiamonds .. " (cập nhật định kỳ)")
-            end
-            
-            lastDiamondCount = currentDiamonds
+            saveUserIdToFile(userId)
             lastUpdateTime = currentTime
         end
     end)
-    
-    -- Lưu dữ liệu ban đầu
-    local initialDiamonds = getDiamondCount(gui)
-    saveDiamondToFile(userId, initialDiamonds)
-    print("💎 Kim cương ban đầu: " .. initialDiamonds)
 end
 
 -- Khởi động monitor
-startDiamondMonitor()
+startSimpleMonitor()
 
--- Command kiểm tra diamond thủ công
+-- Command kiểm tra thủ công
 game.Players.LocalPlayer.Chatted:Connect(function(msg)
-    if msg:lower() == "/checkdiamond" then
-        local gui = plr.PlayerGui:FindFirstChild("Interface")
-        if gui then
-            gui = gui:FindFirstChild("DiamondCount")
-            if gui then
-                gui = gui:FindFirstChild("Count")
-                if gui then
-                    local diamonds = getDiamondCount(gui)
-                    print("💎 Số kim cương hiện tại: " .. diamonds)
-                    saveDiamondToFile(plr.UserId, diamonds)
-                end
-            end
-        end
+    if msg:lower() == "/save" then
+        saveUserIdToFile(plr.UserId)
+        print("💾 Đã lưu thủ công!")
     end
 end)
