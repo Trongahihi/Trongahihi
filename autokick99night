@@ -11,7 +11,7 @@ local function checkDiamondAndLeave()
 end
 
 -- Delay 10s trước khi kết nối signal và vòng lặp
-task.delay(10, function()
+task.delay(20, function()
     -- Check lần đầu
     checkDiamondAndLeave()
 
