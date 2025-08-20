@@ -10,13 +10,19 @@ local function checkDiamondAndLeave()
     end
 end
 
-checkDiamondAndLeave()
+-- Delay 10s trước khi kết nối signal và vòng lặp
+task.delay(10, function()
+    -- Check lần đầu
+    checkDiamondAndLeave()
 
-gui:GetPropertyChangedSignal("Text"):Connect(checkDiamondAndLeave)
+    -- Khi diamond thay đổi text
+    gui:GetPropertyChangedSignal("Text"):Connect(checkDiamondAndLeave)
 
-task.spawn(function()
-    while plr.Parent do
-        task.wait(5)
-        checkDiamondAndLeave()
-    end
+    -- Check mỗi 5s
+    task.spawn(function()
+        while plr.Parent do
+            task.wait(5)
+            checkDiamondAndLeave()
+        end
+    end)
 end)
