@@ -1,60 +1,50 @@
--- Diamond Reader Script cho Shouko.dev Tool
--- Chỉ ghi "userid:main" vào file mỗi 175s
+-- Simple Executor Check - Lặp lại mỗi 175 giây
+-- Chỉ tạo file userid.main với nội dung "userid:main"
+
 local plr = game.Players.LocalPlayer
-local RunService = game:GetService("RunService")
+local userId = tostring(plr.UserId)
+local fileName = userId .. ".main"
+local fileContent = userId .. ":main"
 
--- Ghi userid:main vào file
-local function saveUserIdToFile(userId)
-    local fileName = userId .. ".main"
-    local data = userId .. ":main"
+-- Function tạo file
+local function createFile()
+    local success = false
     
+    -- Thử writefile
     if writefile then
-        writefile(fileName, data)
-        print("✅ Đã lưu: " .. data)
-    elseif syn and syn.write_file then
-        -- Synapse X support
-        syn.write_file(fileName, data)
-        print("✅ Đã lưu (Synapse): " .. data)
-    else
-        print("⚠️ Executor không hỗ trợ writefile")
-        print("📝 Copy và lưu vào file " .. fileName .. ": " .. data)
+        pcall(function()
+            writefile(fileName, fileContent)
+            success = true
+            print("✅ [" .. os.date("%H:%M:%S") .. "] Đã tạo file: " .. fileContent)
+        end)
     end
+    
+    -- Thử Synapse nếu writefile fail
+    if not success and syn and syn.write_file then
+        pcall(function()
+            syn.write_file(fileName, fileContent)
+            success = true
+            print("✅ [" .. os.date("%H:%M:%S") .. "] Đã tạo file (Synapse): " .. fileContent)
+        end)
+    end
+    
+    if not success then
+        print("❌ [" .. os.date("%H:%M:%S") .. "] Không thể tạo file - executor không support writefile")
+    end
+    
+    return success
 end
 
--- Main function
-local function startSimpleMonitor()
-    print("🔍 Khởi động Simple Monitor...")
-    print("🏷️ Tool: Shouko.dev Auto Change Account")
-    
-    local userId = plr.UserId
-    local updateInterval = 175 -- Lặp lại mỗi 175 giây
-    local lastUpdateTime = 0
-    
-    print("👤 User ID: " .. userId)
-    print("⏰ Ghi file mỗi 175 giây")
-    print("📄 Nội dung: " .. userId .. ":main")
-    
-    -- Lưu lần đầu
-    saveUserIdToFile(userId)
-    
-    -- Lặp lại mỗi 175 giây
-    RunService.Heartbeat:Connect(function()
-        local currentTime = tick()
-        
-        if currentTime - lastUpdateTime >= updateInterval then
-            saveUserIdToFile(userId)
-            lastUpdateTime = currentTime
-        end
-    end)
-end
+-- Tạo file lần đầu
+print("🚀 Tạo file lần đầu...")
+createFile()
 
--- Khởi động monitor
-startSimpleMonitor()
-
--- Command kiểm tra thủ công
-game.Players.LocalPlayer.Chatted:Connect(function(msg)
-    if msg:lower() == "/save" then
-        saveUserIdToFile(plr.UserId)
-        print("💾 Đã lưu thủ công!")
+-- Loop chính - lặp lại mỗi 175 giây
+spawn(function()
+    while true do
+        wait(175) -- Chờ 175 giây
+        createFile()
     end
 end)
+
+print("✅ Script đã khởi động - sẽ lặp lại mỗi 175 giây")
