@@ -1,21 +1,19 @@
 local plr = game.Players.LocalPlayer
 local gui = plr.PlayerGui:WaitForChild("Interface"):WaitForChild("DiamondCount"):WaitForChild("Count")
 
+local kickThreshold = getgenv().KickThreshold or 500
+
 local function checkDiamondAndLeave()
     local diamondCount = tonumber(gui.Text) or 0
-    if diamondCount >= 500 then
-        -- Thoát hẳn về Home Roblox
+    if diamondCount >= kickThreshold then
         game:Shutdown()
     end
 end
 
--- Kiểm tra ngay
 checkDiamondAndLeave()
 
--- Theo dõi thay đổi gems
 gui:GetPropertyChangedSignal("Text"):Connect(checkDiamondAndLeave)
 
--- Thêm check định kỳ
 task.spawn(function()
     while plr.Parent do
         task.wait(5)
