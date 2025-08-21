@@ -2,27 +2,39 @@ local plr = game.Players.LocalPlayer
 local gui = plr.PlayerGui:WaitForChild("Interface"):WaitForChild("DiamondCount"):WaitForChild("Count")
 
 local kickThreshold = getgenv().KickThreshold or 500
+local TeleportService = game:GetService("TeleportService")
 
-local function checkDiamondAndLeave()
-    local diamondCount = tonumber(gui.Text) or 0
-    if diamondCount >= kickThreshold then
-        game:Shutdown()
+local function rejoin()
+    local success, err = pcall(function()
+        TeleportService:Teleport(game.PlaceId, plr)
+    end)
+    if not success then
+        warn("[AUTO REJOIN] Lỗi rejoin:", err)
+        -- Thử lại sau 5 giây nếu lỗi
+        task.delay(5, rejoin)
     end
 end
 
--- Delay 10s trước khi kết nối signal và vòng lặp
-task.delay(20, function()
+local function checkDiamondAndRejoin()
+    local diamondCount = tonumber(gui.Text) or 0
+    if diamondCount >= kickThreshold then
+        rejoin()
+    end
+end
+
+-- Delay 5s trước khi kết nối signal và vòng lặp
+task.delay(5, function()
     -- Check lần đầu
-    checkDiamondAndLeave()
+    checkDiamondAndRejoin()
 
     -- Khi diamond thay đổi text
-    gui:GetPropertyChangedSignal("Text"):Connect(checkDiamondAndLeave)
+    gui:GetPropertyChangedSignal("Text"):Connect(checkDiamondAndRejoin)
 
     -- Check mỗi 5s
     task.spawn(function()
         while plr.Parent do
             task.wait(5)
-            checkDiamondAndLeave()
+            checkDiamondAndRejoin()
         end
     end)
 end)
