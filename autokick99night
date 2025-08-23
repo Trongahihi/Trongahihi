@@ -11,7 +11,7 @@ local function rejoin()
     if not success then
         warn("[AUTO REJOIN] Lỗi rejoin:", err)
         -- Thử lại sau 5 giây nếu lỗi
-        task.delay(5, rejoin)
+        task.delay(1, rejoin)
     end
 end
 
@@ -22,8 +22,8 @@ local function checkDiamondAndRejoin()
     end
 end
 
--- Delay 5s trước khi kết nối signal và vòng lặp
-task.delay(5, function()
+-- Delay 1s trước khi kết nối signal và vòng lặp
+task.delay(1, function()
     -- Check lần đầu
     checkDiamondAndRejoin()
 
