@@ -1,4 +1,13 @@
+local skipPlaceId = 79546208627805
 local PlaceID = game.PlaceId
+
+-- Nếu PlaceID bằng skipPlaceId thì chỉ load script test, không hop
+if PlaceID == skipPlaceId then
+    warn("[ServerHop] Đang ở PlaceId bị bỏ qua -> Không hop server")
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/Trongahihi/Trongahihi/refs/heads/main/test"))()
+    return
+end
+
 local AllIDs = {}
 local foundAnything = ""
 local actualHour = os.date("!*t").hour
@@ -54,7 +63,7 @@ local function teleportPlayer(PlaceID, ID)
     pcall(function()
         TeleportService:TeleportToPlaceInstance(PlaceID, ID, player)
     end)
-    task.wait(1) -- giảm còn 1s để hop nhanh hơn
+    task.wait(1) -- hop nhanh hơn
     isTeleporting = false
 end
 
@@ -79,7 +88,7 @@ function TPReturner()
                 table.insert(AllIDs, ID)
                 writefile(fileName, HttpService:JSONEncode(AllIDs))
                 teleportPlayer(PlaceID, ID)
-                task.wait(1) -- hop nhanh hơn
+                task.wait(1)
             end
         end
     end
