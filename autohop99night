@@ -146,6 +146,22 @@ function autoServerHopper()
     print("File sử dụng: " .. FILENAME)
     print("Place ID: " .. PlaceID)
     
+    -- Kiểm tra PlaceID đặc biệt - không hop nếu ở PlaceID này
+    if tostring(PlaceID) == "79546208627805" then
+        print("🚫 PHÁT HIỆN PLACE ID ĐỘC QUYỀN: " .. PlaceID)
+        print("🔒 Server hopping đã bị VÔ HIỆU HÓA cho Place này")
+        print("✅ Script sẽ chỉ theo dõi mà không thực hiện hop server")
+        
+        -- Chỉ theo dõi và log, không hop
+        while true do
+            wait(30) -- Kiểm tra mỗi 30 giây
+            CurrentServerID = tostring(game.JobId)
+            addCurrentServerToUsed() -- Vẫn lưu server để tracking
+            print("📊 [MONITOR MODE] Server hiện tại: " .. CurrentServerID .. " | Đã track " .. #AllIDs .. " servers")
+        end
+        return
+    end
+    
     -- Thêm server hiện tại vào danh sách ngay khi bắt đầu
     addCurrentServerToUsed()
     
