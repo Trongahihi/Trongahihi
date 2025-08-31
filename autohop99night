@@ -97,7 +97,7 @@ local function teleportPlayer(PlaceID, ID)
         game:GetService("TeleportService"):TeleportToPlaceInstance(PlaceID, ID, game.Players.LocalPlayer)
     end)
     
-    wait(1)
+    wait(1) -- 1 giây cho teleport
     isTeleporting = false
 end
 
@@ -154,7 +154,7 @@ function autoServerHopper()
         
         -- Chỉ theo dõi và log, không hop
         while true do
-            wait(30) -- Kiểm tra mỗi 30 giây
+            wait(10) -- ⚡ Giảm từ 30s xuống 10s cho monitor mode
             CurrentServerID = tostring(game.JobId)
             addCurrentServerToUsed() -- Vẫn lưu server để tracking
             print("📊 [MONITOR MODE] Server hiện tại: " .. CurrentServerID .. " | Đã track " .. #AllIDs .. " servers")
@@ -162,12 +162,9 @@ function autoServerHopper()
         return
     end
     
-    -- Thêm server hiện tại vào danh sách ngay khi bắt đầu
-    addCurrentServerToUsed()
-    
     -- Vòng lặp kiểm tra liên tục
     while true do
-        wait(5) -- Kiểm tra mỗi 5 giây
+        wait(1) -- ⚡ Kiểm tra mỗi 1 giây để phản ứng siêu nhanh
         
         -- Cập nhật server ID hiện tại (có thể thay đổi sau khi teleport)
         CurrentServerID = tostring(game.JobId)
@@ -187,28 +184,33 @@ function autoServerHopper()
                 
                 if success then
                     print("✅ Đã tìm thấy và teleport tới server mới")
-                    wait(10) -- Chờ teleport hoàn thành
+                    -- QUAN TRỌNG: Thêm server cũ vào blacklist TRƯỚC KHI TELEPORT
+                    if not isInUsedServer() then
+                        table.insert(AllIDs, CurrentServerID)
+                        writefile(FILENAME, game:GetService('HttpService'):JSONEncode(AllIDs))
+                        print("🚫 Đã blacklist server cũ: " .. CurrentServerID)
+                    end
+                    wait(3) -- ⚡ Chờ 3 giây cho teleport hoàn thành (giảm từ 10s)
                     break
                 else
                     attempts = attempts + 1
                     print("❌ Lần thử " .. attempts .. "/" .. maxAttempts .. " thất bại")
-                    wait(3)
+                    wait(1) -- ⚡ Giảm thời gian chờ từ 3s xuống 1s
                     
                     if attempts >= maxAttempts then
                         print("🛑 Đã thử tối đa, dừng tìm kiếm")
-                        wait(60) -- Chờ 1 phút trước khi thử lại
+                        wait(30) -- ⚡ Giảm từ 60s xuống 30s để thử lại nhanh hơn
                     end
                 end
             end
         else
-            -- Thêm server hiện tại vào danh sách nếu chưa có
-            addCurrentServerToUsed()
-            print("✅ Server hiện tại OK: " .. CurrentServerID)
+            -- CHỈ THÔNG BÁO, KHÔNG THÊM VÀO BLACKLIST
+            print("✅ Server hiện tại OK: " .. CurrentServerID .. " (chưa sử dụng)")
         end
         
         -- Hiển thị thống kê
-        print("📊 Đã sử dụng " .. #AllIDs .. " servers")
-        print("⏰ Kiểm tra lại sau 5 giây...")
+        print("📊 Đã blacklist " .. #AllIDs .. " servers")
+        print("⏰ Kiểm tra lại sau 1 giây... ⚡")
     end
 end
 
