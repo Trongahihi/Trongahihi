@@ -1,56 +1,93 @@
-local skipPlaceId = 79546208627805
 local PlaceID = game.PlaceId
-
--- Nếu PlaceID bằng skipPlaceId thì chỉ load script test, không hop
-if PlaceID == skipPlaceId then
-    warn("[ServerHop] Đang ở PlaceId bị bỏ qua -> Không hop server")
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/Trongahihi/Trongahihi/refs/heads/main/test"))()
-    return
-end
-
 local AllIDs = {}
 local foundAnything = ""
 local actualHour = os.date("!*t").hour
 local Deleted = false
-local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
-local Players = game:GetService("Players")
 
--- File riêng biệt theo UserId
-local player = Players.LocalPlayer
-local fileName = "NotUseidSameServer_" .. player.UserId .. ".json"
+-- Tạo tên file dựa trên UserID của người chơi
+local PlayerUserID = game.Players.LocalPlayer.UserId
+local FILENAME = "Not" .. PlayerUserID .. "SameServer.json"
+
+-- Lấy server hiện tại để đảm bảo không quay lại
+local CurrentServerID = tostring(game.JobId)
+
+-- Tự động xóa file mỗi 20 phút
+local FILE_CLEANUP_INTERVAL = 20 * 60 -- 20 phút tính bằng giây
+local lastCleanupTime = tick()
+
+local function shouldCleanupFile()
+    return tick() - lastCleanupTime >= FILE_CLEANUP_INTERVAL
+end
+
+local function cleanupFile()
+    pcall(function()
+        if isfile(FILENAME) then
+            delfile(FILENAME)
+            print("🗑️ Đã xóa file " .. FILENAME .. " sau 20 phút")
+        end
+        AllIDs = {actualHour, CurrentServerID} -- Thêm server hiện tại vào danh sách
+        lastCleanupTime = tick()
+        print("🔄 Đã reset danh sách servers cho UserID: " .. PlayerUserID)
+        print("📋 Server hiện tại được thêm vào blacklist: " .. CurrentServerID)
+    end)
+end
 
 -- Improved file reading and handling
 local success, err = pcall(function()
-    AllIDs = HttpService:JSONDecode(readfile(fileName))
-end)
-if not success or not AllIDs then
-    AllIDs = { actualHour }
-    writefile(fileName, HttpService:JSONEncode(AllIDs))
-end
-
--- Auto delete file mỗi 20 phút
-task.spawn(function()
-    while task.wait(60) do
-        local now = os.time()
-        if now % (20 * 60) < 60 then -- mỗi 20p xóa 1 lần
-            if isfile(fileName) then
-                delfile(fileName)
-                AllIDs = { actualHour }
-                writefile(fileName, HttpService:JSONEncode(AllIDs))
-                warn("[ServerHop] File reset sau 20 phút!")
-            end
-        end
+    if isfile(FILENAME) then
+        AllIDs = game:GetService('HttpService'):JSONDecode(readfile(FILENAME))
+        print("📂 Đã đọc file " .. FILENAME .. " thành công")
+    else
+        error("File không tồn tại")
     end
 end)
 
--- Optimized server checking
-local function shouldTeleportToServer(ID)
+if not success or not AllIDs then
+    AllIDs = {actualHour, CurrentServerID} -- Bao gồm server hiện tại
+    writefile(FILENAME, game:GetService('HttpService'):JSONEncode(AllIDs))
+    print("📁 Tạo file " .. FILENAME .. " cho UserID: " .. PlayerUserID)
+    print("🏠 Server hiện tại: " .. CurrentServerID .. " đã được thêm vào blacklist")
+end
+
+-- Đảm bảo server hiện tại luôn trong danh sách
+local function ensureCurrentServerInList()
+    local found = false
     for _, existingID in pairs(AllIDs) do
-        if existingID == ID then
+        if tostring(existingID) == CurrentServerID then
+            found = true
+            break
+        end
+    end
+    
+    if not found then
+        table.insert(AllIDs, CurrentServerID)
+        writefile(FILENAME, game:GetService('HttpService'):JSONEncode(AllIDs))
+        print("➕ Đã thêm server hiện tại vào danh sách: " .. CurrentServerID)
+    end
+end
+
+-- Gọi hàm đảm bảo server hiện tại được thêm
+ensureCurrentServerInList()
+
+-- Optimized server checking với logging chi tiết
+local function shouldTeleportToServer(ID)
+    local serverID = tostring(ID)
+    
+    -- Kiểm tra có phải server hiện tại không
+    if serverID == CurrentServerID then
+        print("❌ Bỏ qua server hiện tại: " .. serverID)
+        return false
+    end
+    
+    -- Kiểm tra trong danh sách đã vào
+    for i, existingID in pairs(AllIDs) do
+        if tostring(existingID) == serverID then
+            print("❌ Server " .. serverID .. " đã có trong danh sách (vị trí " .. i .. ")")
             return false
         end
     end
+    
+    print("✅ Server " .. serverID .. " OK để teleport")
     return true
 end
 
@@ -60,47 +97,90 @@ local isTeleporting = false
 local function teleportPlayer(PlaceID, ID)
     if isTeleporting then return end
     isTeleporting = true
+    
+    print("🚀 [UserID: " .. PlayerUserID .. "] Đang teleport đến server: " .. ID)
+    print("📊 Tổng server trong blacklist: " .. #AllIDs)
+    
     pcall(function()
-        TeleportService:TeleportToPlaceInstance(PlaceID, ID, player)
+        game:GetService("TeleportService"):TeleportToPlaceInstance(PlaceID, ID, game.Players.LocalPlayer)
     end)
-    task.wait(1) -- hop nhanh hơn
+    
+    wait(1) -- prevent spam teleport attempts
     isTeleporting = false
 end
 
 function TPReturner()
+    -- Kiểm tra và xóa file nếu đã đủ 20 phút
+    if shouldCleanupFile() then
+        cleanupFile()
+    end
+    
     local Site
     if foundAnything == "" then
-        Site = HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100'))
+        Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100'))
     else
-        Site = HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100&cursor=' .. foundAnything))
+        Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100&cursor=' .. foundAnything))
     end
-
+    
     if Site.nextPageCursor and Site.nextPageCursor ~= "null" then
         foundAnything = Site.nextPageCursor
     else
         foundAnything = ""
     end
-
+    
+    print("🔍 Đang kiểm tra " .. #Site.data .. " servers...")
+    
     for _, v in pairs(Site.data) do
         local ID = tostring(v.id)
+        print("🌐 Kiểm tra server: " .. ID .. " (" .. v.playing .. "/" .. v.maxPlayers .. " người chơi)")
+        
         if tonumber(v.maxPlayers) > tonumber(v.playing) then
             if shouldTeleportToServer(ID) then
                 table.insert(AllIDs, ID)
-                writefile(fileName, HttpService:JSONEncode(AllIDs))
+                writefile(FILENAME, game:GetService('HttpService'):JSONEncode(AllIDs))
+                
+                print("✅ [UserID: " .. PlayerUserID .. "] Tìm thấy server phù hợp: " .. ID .. " (" .. v.playing .. "/" .. v.maxPlayers .. " người chơi)")
                 teleportPlayer(PlaceID, ID)
-                task.wait(1)
+                wait(4)
+                return -- Dừng sau khi tìm được 1 server
             end
+        else
+            print("⚠️ Server " .. ID .. " đã full")
         end
     end
 end
 
--- Teleport loop không giới hạn
+-- Teleport loop with max iterations
+local teleportCount = 0
+local maxTeleports = 10 -- Tăng lên để tìm được server
+
 function Teleport()
-    while task.wait(1) do
+    print("🔍 [UserID: " .. PlayerUserID .. "] Bắt đầu tìm kiếm server...")
+    print("📂 Sử dụng file: " .. FILENAME)
+    print("🏠 Server hiện tại: " .. CurrentServerID)
+    print("⏰ File sẽ được tự động xóa sau " .. math.ceil((FILE_CLEANUP_INTERVAL - (tick() - lastCleanupTime)) / 60) .. " phút")
+    
+    while wait() and teleportCount < maxTeleports do
         pcall(function()
             TPReturner()
         end)
+        teleportCount = teleportCount + 1
+        
+        if teleportCount >= maxTeleports then
+            print("⚠️ [UserID: " .. PlayerUserID .. "] Đã đạt giới hạn " .. maxTeleports .. " lần teleport")
+            break
+        end
+        
+        wait(2) -- Delay giữa các lần thử
     end
 end
 
+-- Hiển thị thông tin debug ban đầu
+print("=== THÔNG TIN DEBUG ===")
+print("UserID: " .. PlayerUserID)
+print("Server hiện tại: " .. CurrentServerID)
+print("File sử dụng: " .. FILENAME)
+print("Place ID: " .. PlaceID)
+
+-- Khởi động script
 Teleport()
