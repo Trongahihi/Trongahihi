@@ -46,4 +46,3 @@ task.delay(1, function()
         end
     end)
 end)
-setfpscap(10)
