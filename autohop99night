@@ -1,218 +1,424 @@
-local PlaceID = game.PlaceId
-local AllIDs = {}
-local foundAnything = ""
-local actualHour = os.date("!*t").hour
+-- ====== Services ======
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
 
--- Tạo tên file dựa trên UserID của người chơi
-local PlayerUserID = game.Players.LocalPlayer.UserId
-local FILENAME = "Not" .. PlayerUserID .. "SameServer.json"
+-- ====== PlaceId Config ======
+local PlaceIdCheck = 79546208627805
+local TargetPlaceId = 126509999114328
+local HopDelay = 1
 
--- Lấy server hiện tại
-local CurrentServerID = tostring(game.JobId)
+-- ====== Blacklist System ======
+local NotSameSV_useid = "NotSameSV_" .. LocalPlayer.UserId .. ".json"
+local blacklistedServers = {}
+local isHopping = false
+local cleanupTimer = 0
 
--- Tự động xóa file mỗi 20 phút
-local FILE_CLEANUP_INTERVAL = 20 * 60 -- 20 phút tính bằng giây
-local lastCleanupTime = tick()
-
-local function shouldCleanupFile()
-    return tick() - lastCleanupTime >= FILE_CLEANUP_INTERVAL
-end
-
-local function cleanupFile()
-    pcall(function()
-        if isfile(FILENAME) then
-            delfile(FILENAME)
-            print("🗑️ Đã xóa file " .. FILENAME .. " sau 20 phút")
-        end
-        AllIDs = {actualHour}
-        lastCleanupTime = tick()
-        print("🔄 Đã reset danh sách servers cho UserID: " .. PlayerUserID)
+-- ====== Utility Functions ======
+local function loadJSON(filename)
+    local success, data = pcall(function()
+        return readfile(filename)
     end)
-end
-
--- Đọc file hoặc tạo mới
-local success, err = pcall(function()
-    if isfile(FILENAME) then
-        AllIDs = game:GetService('HttpService'):JSONDecode(readfile(FILENAME))
-        print("📂 Đã đọc file " .. FILENAME .. " thành công")
-    else
-        error("File không tồn tại")
+    if success then
+        local decoded = HttpService:JSONDecode(data)
+        return decoded or {}
     end
-end)
-
-if not success or not AllIDs then
-    AllIDs = {actualHour}
-    writefile(FILENAME, game:GetService('HttpService'):JSONEncode(AllIDs))
-    print("📁 Tạo file " .. FILENAME .. " mới cho UserID: " .. PlayerUserID)
+    return {}
 end
 
--- Hàm kiểm tra server hiện tại có trong danh sách đã vào không
-local function isInUsedServer()
-    for _, usedServerID in pairs(AllIDs) do
-        if tostring(usedServerID) == CurrentServerID then
+local function saveJSON(filename, data)
+    local encoded = HttpService:JSONEncode(data)
+    writefile(filename, encoded)
+end
+
+local function loadBlacklistData()
+    blacklistedServers = loadJSON(NotSameSV_useid)
+    print("🚫 Loaded blacklisted servers:", #blacklistedServers)
+end
+
+local function saveBlacklistData()
+    saveJSON(NotSameSV_useid, blacklistedServers)
+end
+
+local function isServerBlacklisted(serverId)
+    for _, serverData in pairs(blacklistedServers) do
+        if serverData.serverId == serverId then
             return true
         end
     end
     return false
 end
 
--- Hàm thêm server hiện tại vào danh sách đã sử dụng
-local function addCurrentServerToUsed()
-    if not isInUsedServer() then
-        table.insert(AllIDs, CurrentServerID)
-        writefile(FILENAME, game:GetService('HttpService'):JSONEncode(AllIDs))
-        print("➕ Đã thêm server hiện tại vào danh sách đã sử dụng: " .. CurrentServerID)
+local function addToBlacklist(serverId, reason)
+    if not isServerBlacklisted(serverId) then
+        table.insert(blacklistedServers, {
+            serverId = serverId,
+            reason = reason,
+            timestamp = os.time()
+        })
+        saveBlacklistData()
+        print("🚫 Blacklisted server:", serverId, "(" .. reason .. ")")
     end
 end
 
--- Hàm kiểm tra có nên teleport tới server này không
-local function shouldTeleportToServer(ID)
-    local serverID = tostring(ID)
-    
-    -- Không teleport tới server hiện tại
-    if serverID == CurrentServerID then
-        return false
+local function autoCleanup()
+    cleanupTimer = cleanupTimer + 1
+    if cleanupTimer >= 1200 then -- 20 minutes
+        print("🧹 Auto cleanup blacklist...")
+        blacklistedServers = {}
+        saveBlacklistData()
+        cleanupTimer = 0
+        print("✅ Blacklist cleaned!")
     end
-    
-    -- Không teleport tới server đã từng vào
-    for _, existingID in pairs(AllIDs) do
-        if tostring(existingID) == serverID then
-            return false
-        end
-    end
-    
-    return true
 end
 
--- Teleport flag
-local isTeleporting = false
-
-local function teleportPlayer(PlaceID, ID)
-    if isTeleporting then return end
-    isTeleporting = true
-    
-    print("🚀 [UserID: " .. PlayerUserID .. "] Đang teleport đến server: " .. ID)
-    
-    pcall(function()
-        game:GetService("TeleportService"):TeleportToPlaceInstance(PlaceID, ID, game.Players.LocalPlayer)
+-- ====== Fast Server Selection ======
+local function getFreshServers(placeId)
+    local servers = {}
+    local success, response = pcall(function()
+        return game:HttpGet("https://games.roblox.com/v1/games/"..placeId.."/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
     end)
     
-    wait(1) -- 1 giây cho teleport
-    isTeleporting = false
-end
-
--- Hàm tìm server mới để teleport
-function findAndTeleport()
-    -- Kiểm tra và xóa file nếu đã đủ 20 phút
-    if shouldCleanupFile() then
-        cleanupFile()
-    end
-    
-    local Site
-    if foundAnything == "" then
-        Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100'))
-    else
-        Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100&cursor=' .. foundAnything))
-    end
-    
-    if Site.nextPageCursor and Site.nextPageCursor ~= "null" then
-        foundAnything = Site.nextPageCursor
-    else
-        foundAnything = ""
-    end
-    
-    print("🔍 Tìm kiếm server mới trong " .. #Site.data .. " servers...")
-    
-    for _, v in pairs(Site.data) do
-        local ID = tostring(v.id)
-        
-        if tonumber(v.maxPlayers) > tonumber(v.playing) then
-            if shouldTeleportToServer(ID) then
-                print("✅ Tìm thấy server phù hợp: " .. ID .. " (" .. v.playing .. "/" .. v.maxPlayers .. " người chơi)")
-                teleportPlayer(PlaceID, ID)
-                return true -- Đã tìm thấy và teleport
-            end
-        end
-    end
-    
-    return false -- Không tìm thấy server phù hợp
-end
-
--- Hàm chính để kiểm tra và auto hop
-function autoServerHopper()
-    print("=== AUTO SERVER HOPPER ===")
-    print("UserID: " .. PlayerUserID)
-    print("Server hiện tại: " .. CurrentServerID)
-    print("File sử dụng: " .. FILENAME)
-    print("Place ID: " .. PlaceID)
-    
-    -- Kiểm tra PlaceID đặc biệt - không hop nếu ở PlaceID này
-    if tostring(PlaceID) == "79546208627805" then
-        print("🚫 PHÁT HIỆN PLACE ID ĐỘC QUYỀN: " .. PlaceID)
-        print("🔒 Server hopping đã bị VÔ HIỆU HÓA cho Place này")
-        print("✅ Script sẽ chỉ theo dõi mà không thực hiện hop server")
-        
-        -- Chỉ theo dõi và log, không hop
-        while true do
-            wait(10) -- ⚡ Giảm từ 30s xuống 10s cho monitor mode
-            CurrentServerID = tostring(game.JobId)
-            addCurrentServerToUsed() -- Vẫn lưu server để tracking
-            print("📊 [MONITOR MODE] Server hiện tại: " .. CurrentServerID .. " | Đã track " .. #AllIDs .. " servers")
-        end
-        return
-    end
-    
-    -- Vòng lặp kiểm tra liên tục
-    while true do
-        wait(1) -- ⚡ Kiểm tra mỗi 1 giây để phản ứng siêu nhanh
-        
-        -- Cập nhật server ID hiện tại (có thể thay đổi sau khi teleport)
-        CurrentServerID = tostring(game.JobId)
-        
-        -- Kiểm tra nếu đang ở server đã từng vào
-        if isInUsedServer() then
-            print("⚠️ Phát hiện đang ở server đã sử dụng: " .. CurrentServerID)
-            print("🔄 Bắt đầu tìm server mới...")
-            
-            local attempts = 0
-            local maxAttempts = 10
-            
-            while attempts < maxAttempts do
-                local success = pcall(function()
-                    return findAndTeleport()
-                end)
-                
-                if success then
-                    print("✅ Đã tìm thấy và teleport tới server mới")
-                    -- QUAN TRỌNG: Thêm server cũ vào blacklist TRƯỚC KHI TELEPORT
-                    if not isInUsedServer() then
-                        table.insert(AllIDs, CurrentServerID)
-                        writefile(FILENAME, game:GetService('HttpService'):JSONEncode(AllIDs))
-                        print("🚫 Đã blacklist server cũ: " .. CurrentServerID)
-                    end
-                    wait(3) -- ⚡ Chờ 3 giây cho teleport hoàn thành (giảm từ 10s)
-                    break
-                else
-                    attempts = attempts + 1
-                    print("❌ Lần thử " .. attempts .. "/" .. maxAttempts .. " thất bại")
-                    wait(1) -- ⚡ Giảm thời gian chờ từ 3s xuống 1s
-                    
-                    if attempts >= maxAttempts then
-                        print("🛑 Đã thử tối đa, dừng tìm kiếm")
-                        wait(30) -- ⚡ Giảm từ 60s xuống 30s để thử lại nhanh hơn
+    if success then
+        local data = HttpService:JSONDecode(response)
+        if data and data.data then
+            for _, v in pairs(data.data) do
+                if type(v) == "table" and v.playing < v.maxPlayers then
+                    local serverId = v.id
+                    if not isServerBlacklisted(serverId) then
+                        table.insert(servers, serverId)
+                        if #servers >= 10 then break end -- Lấy 10 servers để spam
                     end
                 end
             end
-        else
-            -- CHỈ THÔNG BÁO, KHÔNG THÊM VÀO BLACKLIST
-            print("✅ Server hiện tại OK: " .. CurrentServerID .. " (chưa sử dụng)")
         end
-        
-        -- Hiển thị thống kê
-        print("📊 Đã blacklist " .. #AllIDs .. " servers")
-        print("⏰ Kiểm tra lại sau 1 giây... ⚡")
+    end
+    
+    print("📊 Fresh servers available:", #servers)
+    return servers
+end
+
+-- ====== Script 1: Server Hop ======
+local function script1()
+    while true do
+        if game.PlaceId == PlaceIdCheck then
+            TeleportService:Teleport(TargetPlaceId, LocalPlayer)
+        end
+        wait(HopDelay)
     end
 end
 
--- Khởi động script
-autoServerHopper()
+-- ====== Script 2: Auto Farm + Smart Hop ======
+local function script2()
+    -- Load blacklist data
+    loadBlacklistData()
+    
+    -- Blacklist server ngay khi join thành công
+    if game.JobId and game.JobId ~= "" and not isServerBlacklisted(game.JobId) then
+        addToBlacklist(game.JobId, "successfully_joined")
+        print("✅ Successfully joined server:", game.JobId, "- Added to blacklist")
+    end
+    
+    -- ====== Player & Character ======
+    local player = Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+    -- ====== Diamond GUI ======
+    local guiCount = player.PlayerGui:WaitForChild("Interface"):WaitForChild("DiamondCount"):WaitForChild("Count")
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "DiamondDisplay"
+    screenGui.Parent = player.PlayerGui
+
+    local diamondLabel = Instance.new("TextLabel")
+    diamondLabel.Size = UDim2.new(0,200,0,50)
+    diamondLabel.Position = UDim2.new(0.5,-100,0.5,-25)
+    diamondLabel.BackgroundTransparency = 0.5
+    diamondLabel.BackgroundColor3 = Color3.fromRGB(0,0,0)
+    diamondLabel.TextColor3 = Color3.fromRGB(0,255,0)
+    diamondLabel.TextScaled = true
+    diamondLabel.Font = Enum.Font.GothamBold
+    diamondLabel.Text = "Diamonds: 0"
+    diamondLabel.Parent = screenGui
+
+    -- ====== Auto Collect & Chest ======
+    local openedChests = {}
+    local autoCollectEnabled = true
+    local autoChestEnabled = true
+
+    local function teleportTo(position)
+        if humanoidRootPart then
+            humanoidRootPart.CFrame = CFrame.new(position)
+        end
+    end
+
+    local function collectDiamondRemote(diamond)
+        pcall(function()
+            if ReplicatedStorage:FindFirstChild("RemoteEvents") then
+                local remotes = ReplicatedStorage.RemoteEvents
+                if remotes:FindFirstChild("DiamondsClaimed") then
+                    remotes.DiamondsClaimed:FireServer(diamond)
+                end
+                if remotes:FindFirstChild("RequestTakeDiamonds") then
+                    remotes.RequestTakeDiamonds:FireServer(diamond)
+                end
+            end
+        end)
+    end
+
+    local function collectDiamondTeleport(diamond)
+        pcall(function()
+            if diamond:FindFirstChild("Position") then
+                teleportTo(diamond.Position.Value or diamond.Position)
+                if diamond:FindFirstChild("ClickDetector") then
+                    diamond.ClickDetector.MouseClick:Fire()
+                elseif diamond:FindFirstChild("ProximityPrompt") then
+                    diamond.ProximityPrompt.Triggered:Fire()
+                end
+            end
+        end)
+    end
+
+    local function openChest(chest)
+        local id = tostring(chest)
+        if openedChests[id] then return false end
+        local success = pcall(function()
+            if ReplicatedStorage:FindFirstChild("RemoteEvents") then
+                local remotes = ReplicatedStorage.RemoteEvents
+                if remotes:FindFirstChild("RequestOpenItemChest") then
+                    remotes.RequestOpenItemChest:FireServer(chest)
+                    openedChests[id] = true
+                    return true
+                end
+            end
+            if chest:FindFirstChild("Position") then
+                teleportTo(chest.Position)
+                if chest:FindFirstChild("ProximityPrompt") then
+                    chest.ProximityPrompt.Triggered:Fire()
+                    openedChests[id] = true
+                elseif chest:FindFirstChild("ClickDetector") then
+                    chest.ClickDetector.MouseClick:Fire()
+                    openedChests[id] = true
+                end
+            end
+        end)
+        return success
+    end
+
+    -- Check resources availability
+    local function checkResources()
+        local diamondCount = 0
+        local chestCount = 0
+        
+        for _, item in pairs(workspace.Items:GetChildren()) do
+            if item.Name == "Diamond" or item:FindFirstChild("Diamond") then
+                diamondCount = diamondCount + 1
+            elseif string.find(item.Name:lower(), "chest") then
+                chestCount = chestCount + 1
+            end
+        end
+        
+        return diamondCount, chestCount
+    end
+
+    local function autoOpenChests()
+        if not autoChestEnabled then return end
+        local chests = {}
+        for _, item in pairs(workspace.Items:GetChildren()) do
+            if string.find(item.Name:lower(), "chest") then
+                table.insert(chests, item)
+            end
+        end
+        for _, chest in ipairs(chests) do
+            openChest(chest)
+        end
+    end
+
+    local function autoCollectDiamonds()
+        if not autoCollectEnabled then return end
+        local diamonds = {}
+        for _, item in pairs(workspace.Items:GetChildren()) do
+            if item.Name == "Diamond" or item:FindFirstChild("Diamond") then
+                table.insert(diamonds, item)
+            end
+        end
+        for _, diamond in ipairs(diamonds) do
+            collectDiamondRemote(diamond)
+            collectDiamondTeleport(diamond)
+        end
+    end
+
+    -- Update GUI
+    spawn(function()
+        while true do
+            if guiCount and guiCount:IsA("TextLabel") then
+                diamondLabel.Text = "Diamonds: "..(guiCount.Text or "0")
+            end
+            wait(0.2)
+        end
+    end)
+
+    -- Main Automation
+    spawn(function()
+        while true do
+            autoOpenChests()
+            autoCollectDiamonds()
+            wait(0.2)
+        end
+    end)
+
+    -- ====== Flying over fire ======
+    local function startFlying(char)
+        local hrp = char:WaitForChild("HumanoidRootPart")
+        local hoverHeight = 60
+        local bp = Instance.new("BodyPosition")
+        bp.MaxForce = Vector3.new(1e5,1e5,1e5)
+        bp.Position = workspace.Map.Campground.MainFire.Center.Position + Vector3.new(0, hoverHeight, 0)
+        bp.Parent = hrp
+
+        RunService.RenderStepped:Connect(function()
+            if hrp.Parent then
+                bp.Position = workspace.Map.Campground.MainFire.Center.Position + Vector3.new(0, hoverHeight, 0)
+            end
+        end)
+    end
+
+    if player.Character then
+        startFlying(player.Character)
+    end
+    player.CharacterAdded:Connect(startFlying)
+
+    -- ====== Fast Server Hop ======
+    local function fastServerHop()
+        if isHopping then return end
+        isHopping = true
+        
+        -- CHỈ blacklist server hiện tại khi thực sự ở trong đó
+        if game.JobId and game.JobId ~= "" then
+            addToBlacklist(game.JobId, "actually_joined_and_leaving")
+        end
+        
+        print("🚀 Starting fast server hop...")
+        
+        -- Fast spam hop (KHÔNG blacklist target servers)
+        spawn(function()
+            while isHopping do
+                local servers = getFreshServers(game.PlaceId)
+                if #servers > 0 then
+                    for _, serverId in ipairs(servers) do
+                        if not isHopping then break end
+                        
+                        -- KHÔNG blacklist target server ở đây
+                        print("⚡ Attempting hop to:", serverId)
+                        pcall(function()
+                            TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, player)
+                        end)
+                        
+                        wait(0.1) -- Super fast spam
+                    end
+                else
+                    print("❌ No fresh servers, trying regular teleport")
+                    pcall(function()
+                        TeleportService:Teleport(game.PlaceId, player)
+                    end)
+                end
+                wait(0.1) -- Continue spam
+            end
+        end)
+    end
+
+    -- Auto cleanup timer
+    spawn(function()
+        while true do
+            wait(1)
+            autoCleanup()
+        end
+    end)
+
+    -- Smart hop conditions
+    spawn(function()
+        local checkTimer = 0
+        local maxWaitTime = 10 -- Max 10s per server
+        
+        while true do
+            wait(1)
+            checkTimer = checkTimer + 1
+            
+            -- Check resources every second
+            local diamonds, chests = checkResources()
+            
+            -- Hop conditions
+            local shouldHop = false
+            local reason = ""
+            
+            if checkTimer >= maxWaitTime then
+                shouldHop = true
+                reason = "max_time_reached"
+            elseif checkTimer >= 5 and diamonds == 0 and chests == 0 then
+                shouldHop = true
+                reason = "no_resources_found"
+            end
+            
+            if shouldHop then
+                print("🎯 Hop triggered: " .. reason)
+                checkTimer = 0
+                fastServerHop()
+                break -- Exit and restart for new server
+            end
+        end
+    end)
+end
+
+-- ====== Run Script ======
+if game.PlaceId == PlaceIdCheck then
+    script1()
+elseif game.PlaceId == TargetPlaceId then
+    script2()
+end
+
+-- ====== Manual Commands ======
+_G.hopNow = function()
+    if game.PlaceId == TargetPlaceId then
+        isHopping = false
+        wait(0.1)
+        
+        -- Blacklist current server trước khi hop
+        if game.JobId and game.JobId ~= "" then
+            addToBlacklist(game.JobId, "manual_hop_from")
+        end
+        
+        local servers = getFreshServers(game.PlaceId)
+        if #servers > 0 then
+            local serverId = servers[1]
+            print("🎯 Manual hopping to:", serverId)
+            -- KHÔNG blacklist target server
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, LocalPlayer)
+        end
+    end
+end
+
+_G.showBlacklist = function()
+    print("=== BLACKLIST STATS ===")
+    print("Total blacklisted servers:", #blacklistedServers)
+    for i, server in pairs(blacklistedServers) do
+        if i <= 10 then -- Show first 10
+            print("  " .. i .. ". " .. server.serverId .. " (" .. server.reason .. ")")
+        end
+    end
+    if #blacklistedServers > 10 then
+        print("  ... and " .. (#blacklistedServers - 10) .. " more")
+    end
+    print("Current server:", game.JobId)
+end
+
+_G.clearBlacklist = function()
+    blacklistedServers = {}
+    saveBlacklistData()
+    print("✅ Blacklist cleared!")
+end
+
+print("Auto farm diamonds 99 night in the forest by Nguyễn Hữu Trọng & ChatGPT ✅")
