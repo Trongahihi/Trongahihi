@@ -274,7 +274,7 @@ local function script2()
     -- ====== Flying over fire ======
     local function startFlying(char)
         local hrp = char:WaitForChild("HumanoidRootPart")
-        local hoverHeight = 60
+        local hoverHeight = 90
         local bp = Instance.new("BodyPosition")
         bp.MaxForce = Vector3.new(1e5,1e5,1e5)
         bp.Position = workspace.Map.Campground.MainFire.Center.Position + Vector3.new(0, hoverHeight, 0)
@@ -421,4 +421,4 @@ _G.clearBlacklist = function()
     print("✅ Blacklist cleared!")
 end
 
-print("Auto farm diamonds 99 night in the forest by Nguyễn Hữu Trọng & ChatGPT ✅")
+print("Auto farm diamonds by Nguyễn Hữu Trọng & ChatGPT ✅")
