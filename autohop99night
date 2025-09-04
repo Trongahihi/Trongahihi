@@ -11,331 +11,65 @@ local PlaceIdCheck = 79546208627805
 local TargetPlaceId = 126509999114328
 local HopDelay = 1
 
--- ====== Enhanced Blacklist System ======
-local NotSameSV_useid = "NotSameSV_" .. LocalPlayer.UserId .. ".json"
-local ServerHistory_useid = "ServerHistory_" .. LocalPlayer.UserId .. ".json"
-local blacklistedServers = {}
-local serverHistory = {} -- Method 2: History tracking
+-- ====== Simple Server Tracking ======
+local currentServerId = game.JobId or ""
+local previousServers = {} -- Just keep a small list of recent servers
+local maxRememberServers = 20 -- Only remember last 20 servers
 local isHopping = false
-local cleanupTimer = 0
-local maxHistorySize = 200 -- Maximum servers to remember
-local maxBlacklistAge = 3600 -- 1 hour in seconds
-local fileCheckInterval = 60 -- Check file integrity every 60 seconds
-local lastFileCheck = 0
 
--- ====== Enhanced Utility Functions ======
-local function loadJSON(filename)
-    local success, data = pcall(function()
-        if not isfile(filename) then
-            return "{}"
-        end
-        local fileData = readfile(filename)
-        if fileData == "" or fileData == nil then
-            return "{}"
-        end
-        return fileData
-    end)
-    
-    if success and data then
-        local decodeSuccess, decoded = pcall(function()
-            return HttpService:JSONDecode(data)
-        end)
-        if decodeSuccess and type(decoded) == "table" then
-            return decoded
-        end
-    end
-    
-    print("⚠️ Failed to load " .. filename .. ", creating new file")
-    return {}
-end
-
-local function saveJSON(filename, data)
-    local success = pcall(function()
-        if type(data) ~= "table" then
-            print("❌ Invalid data type for saving:", type(data))
-            return
-        end
-        
-        local encoded = HttpService:JSONEncode(data)
-        if encoded and encoded ~= "" then
-            writefile(filename, encoded)
-            return true
-        end
-        return false
-    end)
-    
-    if not success then
-        print("❌ Failed to save " .. filename)
-    end
-    return success
-end
-
-local function validateFileIntegrity()
-    local currentTime = tick()
-    if currentTime - lastFileCheck < fileCheckInterval then
-        return
-    end
-    
-    lastFileCheck = currentTime
-    
-    -- Check blacklist file
-    local testBlacklist = loadJSON(NotSameSV_useid)
-    if type(testBlacklist) ~= "table" then
-        print("🔧 Repairing blacklist file...")
-        blacklistedServers = {}
-        saveJSON(NotSameSV_useid, blacklistedServers)
-    end
-    
-    -- Check history file
-    local testHistory = loadJSON(ServerHistory_useid)
-    if type(testHistory) ~= "table" then
-        print("🔧 Repairing history file...")
-        serverHistory = {}
-        saveJSON(ServerHistory_useid, serverHistory)
-    end
-end
-
-local function loadBlacklistData()
-    validateFileIntegrity()
-    blacklistedServers = loadJSON(NotSameSV_useid)
-    serverHistory = loadJSON(ServerHistory_useid)
-    
-    -- Clean old entries on load
-    cleanOldEntries()
-    
-    print("🚫 Loaded blacklisted servers:", #blacklistedServers)
-    print("📚 Loaded server history:", #serverHistory)
-end
-
-local function saveBlacklistData()
-    local success1 = saveJSON(NotSameSV_useid, blacklistedServers)
-    local success2 = saveJSON(ServerHistory_useid, serverHistory)
-    
-    if not success1 or not success2 then
-        print("⚠️ Some files failed to save properly")
-    end
-end
-
--- ====== Method 1: Traditional Blacklist ======
-local function isServerBlacklisted(serverId)
-    if not serverId or serverId == "" then return false end
-    
-    for _, serverData in pairs(blacklistedServers) do
-        if serverData.serverId == serverId then
-            return true
-        end
-    end
-    return false
-end
-
-local function addToBlacklist(serverId, reason)
-    if not serverId or serverId == "" then return end
-    if isServerBlacklisted(serverId) then return end
-    
-    table.insert(blacklistedServers, {
-        serverId = serverId,
-        reason = reason,
-        timestamp = os.time()
-    })
-    
-    saveBlacklistData()
-    print("🚫 Blacklisted server:", serverId, "(" .. reason .. ")")
-end
-
--- ====== Method 2: Server History Tracking ======
-local function addToHistory(serverId, reason)
-    if not serverId or serverId == "" then return end
-    
-    -- Check if server already in history
-    for i, serverData in ipairs(serverHistory) do
-        if serverData.serverId == serverId then
-            -- Update existing entry
-            serverHistory[i].lastVisited = os.time()
-            serverHistory[i].visitCount = (serverHistory[i].visitCount or 1) + 1
-            serverHistory[i].lastReason = reason
-            saveBlacklistData()
-            return
-        end
-    end
-    
-    -- Add new entry
-    table.insert(serverHistory, {
-        serverId = serverId,
-        firstVisited = os.time(),
-        lastVisited = os.time(),
-        visitCount = 1,
-        lastReason = reason
-    })
-    
-    -- Limit history size
-    if #serverHistory > maxHistorySize then
-        table.remove(serverHistory, 1) -- Remove oldest entry
-    end
-    
-    saveBlacklistData()
-    print("📚 Added to history:", serverId, "(" .. reason .. ")")
-end
-
-local function isServerInHistory(serverId)
-    if not serverId or serverId == "" then return false end
-    
-    for _, serverData in pairs(serverHistory) do
-        if serverData.serverId == serverId then
-            return true
-        end
-    end
-    return false
-end
-
--- ====== Enhanced Cleanup System ======
-local function cleanOldEntries()
-    local currentTime = os.time()
-    local removedBlacklist = 0
-    local removedHistory = 0
-    
-    -- Clean blacklist (remove entries older than maxBlacklistAge)
-    for i = #blacklistedServers, 1, -1 do
-        local serverData = blacklistedServers[i]
-        if serverData.timestamp and (currentTime - serverData.timestamp) > maxBlacklistAge then
-            table.remove(blacklistedServers, i)
-            removedBlacklist = removedBlacklist + 1
-        end
-    end
-    
-    -- Clean history (keep only recent entries, but don't remove them too aggressively)
-    if #serverHistory > maxHistorySize then
-        -- Sort by last visited time and keep only the most recent ones
-        table.sort(serverHistory, function(a, b)
-            return (a.lastVisited or 0) > (b.lastVisited or 0)
-        end)
-        
-        -- Remove oldest entries
-        local toRemove = #serverHistory - maxHistorySize
-        for i = 1, toRemove do
-            table.remove(serverHistory, #serverHistory)
-            removedHistory = removedHistory + 1
-        end
-    end
-    
-    if removedBlacklist > 0 or removedHistory > 0 then
-        print("🧹 Cleaned " .. removedBlacklist .. " blacklist entries and " .. removedHistory .. " history entries")
-        saveBlacklistData()
-    end
-end
-
-local function autoCleanup()
-    cleanupTimer = cleanupTimer + 1
-    if cleanupTimer >= 600 then -- 10 minutes instead of 20
-        print("🧹 Auto cleanup starting...")
-        cleanOldEntries()
-        cleanupTimer = 0
-        print("✅ Auto cleanup completed!")
-    end
-end
-
-local function forceCleanup()
-    print("🧹 Force cleanup starting...")
-    
-    -- More aggressive cleanup
-    local currentTime = os.time()
-    local oldSize = #blacklistedServers
-    
-    -- Remove entries older than 30 minutes for force cleanup
-    blacklistedServers = {}
-    for _, serverData in pairs(blacklistedServers) do
-        if serverData.timestamp and (currentTime - serverData.timestamp) < 1800 then -- 30 minutes
-            table.insert(blacklistedServers, serverData)
-        end
-    end
-    
-    -- Keep only last 50 history entries
-    if #serverHistory > 50 then
-        table.sort(serverHistory, function(a, b)
-            return (a.lastVisited or 0) > (b.lastVisited or 0)
-        end)
-        
-        local newHistory = {}
-        for i = 1, 50 do
-            table.insert(newHistory, serverHistory[i])
-        end
-        serverHistory = newHistory
-    end
-    
-    saveBlacklistData()
-    cleanupTimer = 0
-    
-    print("✅ Force cleanup completed! Removed " .. (oldSize - #blacklistedServers) .. " blacklist entries")
-end
-
--- ====== Enhanced Server Selection ======
+-- ====== Simple Server Selection ======
 local function getFreshServers(placeId)
     local servers = {}
-    local attempts = 0
-    local maxAttempts = 3
+    local success, response = pcall(function()
+        return game:HttpGet("https://games.roblox.com/v1/games/"..placeId.."/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
+    end)
     
-    while #servers < 10 and attempts < maxAttempts do
-        attempts = attempts + 1
-        
-        local success, response = pcall(function()
-            return game:HttpGet("https://games.roblox.com/v1/games/"..placeId.."/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
-        end)
-        
-        if success then
-            local decodeSuccess, data = pcall(function()
-                return HttpService:JSONDecode(response)
-            end)
-            
-            if decodeSuccess and data and data.data then
-                for _, v in pairs(data.data) do
-                    if type(v) == "table" and v.playing < v.maxPlayers and v.id then
-                        local serverId = v.id
-                        
-                        -- Method 1: Check blacklist
-                        -- Method 2: Check history (avoid recently visited servers)
-                        if not isServerBlacklisted(serverId) and not isServerInHistory(serverId) then
-                            table.insert(servers, serverId)
-                            if #servers >= 15 then break end -- Get more servers
+    if success then
+        local data = HttpService:JSONDecode(response)
+        if data and data.data then
+            for _, v in pairs(data.data) do
+                if type(v) == "table" and v.playing < v.maxPlayers and v.id then
+                    local serverId = v.id
+                    
+                    -- Skip current server and recent servers
+                    local isRecent = false
+                    if serverId == currentServerId then
+                        isRecent = true
+                    else
+                        for _, recentServer in pairs(previousServers) do
+                            if serverId == recentServer then
+                                isRecent = true
+                                break
+                            end
                         end
+                    end
+                    
+                    if not isRecent then
+                        table.insert(servers, serverId)
+                        if #servers >= 15 then break end
                     end
                 end
             end
         end
-        
-        wait(0.5) -- Brief delay between API calls
     end
     
-    print("📊 Fresh servers available (both methods):", #servers)
-    
-    -- If no servers found with both methods, try just blacklist method
-    if #servers == 0 then
-        print("⚠️ No servers found with both methods, trying blacklist only...")
-        
-        local success, response = pcall(function()
-            return game:HttpGet("https://games.roblox.com/v1/games/"..placeId.."/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
-        end)
-        
-        if success then
-            local decodeSuccess, data = pcall(function()
-                return HttpService:JSONDecode(response)
-            end)
-            
-            if decodeSuccess and data and data.data then
-                for _, v in pairs(data.data) do
-                    if type(v) == "table" and v.playing < v.maxPlayers and v.id then
-                        local serverId = v.id
-                        if not isServerBlacklisted(serverId) then
-                            table.insert(servers, serverId)
-                            if #servers >= 5 then break end
-                        end
-                    end
-                end
-            end
-        end
-        
-        print("📊 Servers available (blacklist only):", #servers)
-    end
-    
+    print("📊 Fresh servers found:", #servers)
     return servers
+end
+
+-- ====== Add to recent servers ======
+local function rememberServer(serverId)
+    if not serverId or serverId == "" then return end
+    
+    -- Add to front of list
+    table.insert(previousServers, 1, serverId)
+    
+    -- Keep only recent servers
+    if #previousServers > maxRememberServers then
+        table.remove(previousServers, #previousServers)
+    end
+    
+    print("🧠 Remembered server:", serverId, "(Total:", #previousServers .. ")")
 end
 
 -- ====== Script 1: Server Hop ======
@@ -350,14 +84,12 @@ end
 
 -- ====== Script 2: Auto Farm + Smart Hop ======
 local function script2()
-    -- Load data
-    loadBlacklistData()
+    print("🚀 Starting Simple Auto Farm...")
     
-    -- Record current server in both systems
-    if game.JobId and game.JobId ~= "" then
-        addToBlacklist(game.JobId, "successfully_joined")
-        addToHistory(game.JobId, "successfully_joined")
-        print("✅ Successfully joined server:", game.JobId, "- Recorded in both systems")
+    -- Remember current server
+    if currentServerId ~= "" then
+        rememberServer(currentServerId)
+        print("✅ Current server:", currentServerId)
     end
     
     -- ====== Player & Character ======
@@ -530,70 +262,45 @@ local function script2()
     end
     player.CharacterAdded:Connect(startFlying)
 
-    -- ====== Enhanced Server Hop ======
-    local function fastServerHop()
+    -- ====== Simple Server Hop ======
+    local function simpleServerHop()
         if isHopping then return end
         isHopping = true
         
-        -- Record current server in both systems before leaving
-        if game.JobId and game.JobId ~= "" then
-            addToBlacklist(game.JobId, "leaving_server")
-            addToHistory(game.JobId, "leaving_server")
-        end
+        -- Remember current server before leaving
+        rememberServer(currentServerId)
         
-        print("🚀 Starting enhanced server hop...")
+        print("🚀 Starting simple server hop...")
         
         spawn(function()
-            local hopAttempts = 0
-            local maxHopAttempts = 10
-            
-            while isHopping and hopAttempts < maxHopAttempts do
-                hopAttempts = hopAttempts + 1
-                
+            while isHopping do
                 local servers = getFreshServers(game.PlaceId)
                 if #servers > 0 then
                     for _, serverId in ipairs(servers) do
                         if not isHopping then break end
                         
-                        print("⚡ Hop attempt " .. hopAttempts .. " to server:", serverId)
+                        print("⚡ Hopping to:", serverId)
                         pcall(function()
                             TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, player)
                         end)
                         
-                        wait(0.1)
+                        wait(0.1) -- Fast hop
                     end
                 else
-                    print("❌ No fresh servers available, trying regular teleport")
+                    print("❌ No fresh servers, trying random")
                     pcall(function()
                         TeleportService:Teleport(game.PlaceId, player)
                     end)
                 end
-                
-                wait(0.5) -- Slight delay between batch attempts
-            end
-            
-            if hopAttempts >= maxHopAttempts then
-                print("⚠️ Max hop attempts reached, forcing cleanup and retry")
-                forceCleanup()
-                wait(2)
-                isHopping = false
+                wait(0.5) -- Brief pause between attempts
             end
         end)
     end
 
-    -- File integrity and cleanup timer
-    spawn(function()
-        while true do
-            wait(1)
-            autoCleanup()
-            validateFileIntegrity()
-        end
-    end)
-
     -- Smart hop conditions
     spawn(function()
         local checkTimer = 0
-        local maxWaitTime = 12 -- Increased to 12s
+        local maxWaitTime = 10 -- 10 seconds per server
         
         while true do
             wait(1)
@@ -607,7 +314,7 @@ local function script2()
             if checkTimer >= maxWaitTime then
                 shouldHop = true
                 reason = "max_time_reached"
-            elseif checkTimer >= 6 and diamonds == 0 and chests == 0 then
+            elseif checkTimer >= 5 and diamonds == 0 and chests == 0 then
                 shouldHop = true
                 reason = "no_resources_found"
             end
@@ -615,7 +322,7 @@ local function script2()
             if shouldHop then
                 print("🎯 Hop triggered: " .. reason)
                 checkTimer = 0
-                fastServerHop()
+                simpleServerHop()
                 break
             end
         end
@@ -629,16 +336,13 @@ elseif game.PlaceId == TargetPlaceId then
     script2()
 end
 
--- ====== Enhanced Manual Commands ======
+-- ====== Simple Manual Commands ======
 _G.hopNow = function()
     if game.PlaceId == TargetPlaceId then
         isHopping = false
         wait(0.1)
         
-        if game.JobId and game.JobId ~= "" then
-            addToBlacklist(game.JobId, "manual_hop_from")
-            addToHistory(game.JobId, "manual_hop_from")
-        end
+        rememberServer(currentServerId)
         
         local servers = getFreshServers(game.PlaceId)
         if #servers > 0 then
@@ -646,76 +350,43 @@ _G.hopNow = function()
             print("🎯 Manual hopping to:", serverId)
             TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, LocalPlayer)
         else
-            print("❌ No suitable servers found for manual hop")
+            print("❌ No suitable servers found")
         end
     end
 end
 
-_G.showBlacklist = function()
-    print("=== ENHANCED BLACKLIST STATS ===")
-    print("Blacklisted servers:", #blacklistedServers)
-    print("Server history:", #serverHistory)
-    print("Current server:", game.JobId or "Unknown")
+_G.showServers = function()
+    print("=== SIMPLE SERVER TRACKING ===")
+    print("Current server:", currentServerId)
+    print("Remembered servers:", #previousServers)
     
-    print("\n--- Recent Blacklisted Servers ---")
-    for i = math.max(1, #blacklistedServers - 9), #blacklistedServers do
-        local server = blacklistedServers[i]
-        if server then
-            local timeAgo = os.time() - (server.timestamp or 0)
-            print(string.format("  %d. %s (%s) - %ds ago", i, server.serverId, server.reason, timeAgo))
+    for i, serverId in ipairs(previousServers) do
+        if i <= 10 then -- Show first 10
+            print("  " .. i .. ". " .. serverId)
         end
     end
     
-    print("\n--- Recent Server History ---")
-    for i = math.max(1, #serverHistory - 9), #serverHistory do
-        local server = serverHistory[i]
-        if server then
-            local timeAgo = os.time() - (server.lastVisited or 0)
-            print(string.format("  %d. %s (visited %dx) - %ds ago", i, server.serverId, server.visitCount or 1, timeAgo))
-        end
+    if #previousServers > 10 then
+        print("  ... and " .. (#previousServers - 10) .. " more")
     end
 end
 
-_G.clearBlacklist = function()
-    blacklistedServers = {}
-    saveBlacklistData()
-    print("✅ Blacklist cleared!")
+_G.clearServers = function()
+    previousServers = {}
+    print("✅ Server memory cleared!")
 end
 
-_G.clearHistory = function()
-    serverHistory = {}
-    saveBlacklistData()
-    print("✅ Server history cleared!")
-end
-
-_G.clearAll = function()
-    blacklistedServers = {}
-    serverHistory = {}
-    saveBlacklistData()
-    print("✅ All data cleared!")
-end
-
-_G.forceCleanup = forceCleanup
-
-_G.showStats = function()
-    print("=== SYSTEM STATS ===")
-    print("Blacklist entries:", #blacklistedServers)
-    print("History entries:", #serverHistory)
-    print("File check interval:", fileCheckInterval, "seconds")
-    print("Max blacklist age:", maxBlacklistAge, "seconds")
-    print("Max history size:", maxHistorySize)
-    print("Cleanup timer:", cleanupTimer)
-    print("Current server:", game.JobId or "Unknown")
-    
-    local oldEntries = 0
-    local currentTime = os.time()
-    for _, server in pairs(blacklistedServers) do
-        if server.timestamp and (currentTime - server.timestamp) > maxBlacklistAge then
-            oldEntries = oldEntries + 1
+_G.forgetCurrent = function()
+    -- Remove current server from memory so we can revisit
+    for i, serverId in ipairs(previousServers) do
+        if serverId == currentServerId then
+            table.remove(previousServers, i)
+            print("🧠 Forgot current server:", currentServerId)
+            return
         end
     end
-    print("Old blacklist entries ready for cleanup:", oldEntries)
+    print("❌ Current server not in memory")
 end
 
-print("Enhanced Auto Farm Diamonds with Dual Blacklist System by Nguyễn Hữu Trọng & ChatGPT ✅")
-print("New commands: _G.clearHistory(), _G.clearAll(), _G.forceCleanup(), _G.showStats()")
+print("Simple Auto Farm Diamonds - No Complex Blacklist ✅")
+print("Commands: _G.hopNow(), _G.showServers(), _G.clearServers(), _G.forgetCurrent()")
