@@ -398,6 +398,13 @@ local function script2()
             
             if shouldHop then
                 print("🎯 Hop triggered: " .. reason)
+                -- Reset GUI timer when hopping
+                spawn(function()
+                    statusLabel.Text = "🚀 HOPPING TO NEW SERVER..."
+                    statusLabel.TextColor3 = Color3.fromRGB(255,0,255)
+                    timerLabel.Text = "⏱️ Hopping..."
+                    timerLabel.TextColor3 = Color3.fromRGB(255,0,255)
+                end)
                 checkTimer = 0
                 simpleServerHop(reason)
                 break
