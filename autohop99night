@@ -297,10 +297,11 @@ local function script2()
         end)
     end
 
-    -- Smart hop conditions
+    -- Smart hop conditions with instant chest check
     spawn(function()
         local checkTimer = 0
         local maxWaitTime = 10 -- 10 seconds per server
+        local initialCheckDone = false
         
         while true do
             wait(1)
@@ -311,12 +312,25 @@ local function script2()
             local shouldHop = false
             local reason = ""
             
-            if checkTimer >= maxWaitTime then
-                shouldHop = true
-                reason = "max_time_reached"
-            elseif checkTimer >= 5 and diamonds == 0 and chests == 0 then
-                shouldHop = true
-                reason = "no_resources_found"
+            -- Instant check for chests after 2 seconds
+            if not initialCheckDone and checkTimer >= 2 then
+                initialCheckDone = true
+                if chests == 0 then
+                    shouldHop = true
+                    reason = "no_chests_found_instant"
+                    print("💨 No chests detected - instant hop!")
+                end
+            end
+            
+            -- Regular checks
+            if not shouldHop then
+                if checkTimer >= maxWaitTime then
+                    shouldHop = true
+                    reason = "max_time_reached"
+                elseif checkTimer >= 5 and diamonds == 0 and chests == 0 then
+                    shouldHop = true
+                    reason = "no_resources_found"
+                end
             end
             
             if shouldHop then
