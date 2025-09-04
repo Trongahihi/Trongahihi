@@ -13,8 +13,8 @@ local HopDelay = 1
 
 -- ====== Simple Server Tracking ======
 local currentServerId = game.JobId or ""
-local previousServers = {} -- Just keep a small list of recent servers
-local maxRememberServers = 20 -- Only remember last 20 servers
+local previousServers = {} 
+local maxRememberServers = 20 
 local isHopping = false
 
 -- ====== Simple Server Selection ======
@@ -31,7 +31,6 @@ local function getFreshServers(placeId)
                 if type(v) == "table" and v.playing < v.maxPlayers and v.id then
                     local serverId = v.id
                     
-                    -- Skip current server and recent servers
                     local isRecent = false
                     if serverId == currentServerId then
                         isRecent = true
@@ -61,10 +60,8 @@ end
 local function rememberServer(serverId)
     if not serverId or serverId == "" then return end
     
-    -- Add to front of list
     table.insert(previousServers, 1, serverId)
     
-    -- Keep only recent servers
     if #previousServers > maxRememberServers then
         table.remove(previousServers, #previousServers)
     end
@@ -84,18 +81,18 @@ end
 
 -- ====== Script 2: Auto Farm + Smart Hop ======
 local function script2()
-    print("🚀 Starting Simple Auto Farm...")
+    print("🚀 Starting Improved Auto Farm...")
     
-    -- Remember current server
     if currentServerId ~= "" then
         rememberServer(currentServerId)
         print("✅ Current server:", currentServerId)
     end
-    
+
     -- ====== Player & Character ======
     local player = Players.LocalPlayer
     local character = player.Character or player.CharacterAdded:Wait()
     local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:WaitForChild("Humanoid")
 
     -- ====== Diamond GUI ======
     local guiCount = player.PlayerGui:WaitForChild("Interface"):WaitForChild("DiamondCount"):WaitForChild("Count")
@@ -105,29 +102,39 @@ local function script2()
     screenGui.Parent = player.PlayerGui
 
     local diamondLabel = Instance.new("TextLabel")
-    diamondLabel.Size = UDim2.new(0,200,0,50)
-    diamondLabel.Position = UDim2.new(0.5,-100,0.5,-25)
-    diamondLabel.BackgroundTransparency = 0.5
+    diamondLabel.Size = UDim2.new(0,300,0,80)
+    diamondLabel.Position = UDim2.new(0.5,-150,0.1,0)
+    diamondLabel.BackgroundTransparency = 0.3
     diamondLabel.BackgroundColor3 = Color3.fromRGB(0,0,0)
-    diamondLabel.TextColor3 = Color3.fromRGB(0,255,0)
+    diamondLabel.TextColor3 = Color3.fromRGB(0,255,255)
     diamondLabel.TextScaled = true
     diamondLabel.Font = Enum.Font.GothamBold
-    diamondLabel.Text = "Diamonds: 0"
+    diamondLabel.Text = "💎 Diamonds: 0 | Status: Starting..."
     diamondLabel.Parent = screenGui
 
-    -- ====== Auto Collect & Chest ======
-    local openedChests = {}
-    local autoCollectEnabled = true
-    local autoChestEnabled = true
-
-    local function teleportTo(position)
-        if humanoidRootPart then
-            humanoidRootPart.CFrame = CFrame.new(position)
-        end
+    -- ====== Player Death Detection ======
+    local function isPlayerDead()
+        if not player.Character then return true end
+        if not player.Character:FindFirstChild("Humanoid") then return true end
+        if player.Character.Humanoid.Health <= 0 then return true end
+        if not player.Character:FindFirstChild("HumanoidRootPart") then return true end
+        return false
     end
 
-    local function collectDiamondRemote(diamond)
+    -- ====== Enhanced Auto Collect & Chest ======
+    local openedChests = {}
+    local collectedDiamonds = {}
+    local autoCollectEnabled = true
+    local autoChestEnabled = true
+    local lastCollectionTime = tick()
+
+    -- SUPER FAST COLLECTION - Multiple methods simultaneously
+    local function superFastCollectDiamond(diamond)
+        local diamondId = tostring(diamond)
+        if collectedDiamonds[diamondId] then return end
+        
         pcall(function()
+            -- Method 1: Remote Events
             if ReplicatedStorage:FindFirstChild("RemoteEvents") then
                 local remotes = ReplicatedStorage.RemoteEvents
                 if remotes:FindFirstChild("DiamondsClaimed") then
@@ -136,47 +143,66 @@ local function script2()
                 if remotes:FindFirstChild("RequestTakeDiamonds") then
                     remotes.RequestTakeDiamonds:FireServer(diamond)
                 end
-            end
-        end)
-    end
-
-    local function collectDiamondTeleport(diamond)
-        pcall(function()
-            if diamond:FindFirstChild("Position") then
-                teleportTo(diamond.Position.Value or diamond.Position)
-                if diamond:FindFirstChild("ClickDetector") then
-                    diamond.ClickDetector.MouseClick:Fire()
-                elseif diamond:FindFirstChild("ProximityPrompt") then
-                    diamond.ProximityPrompt.Triggered:Fire()
+                if remotes:FindFirstChild("ClaimDiamond") then
+                    remotes.ClaimDiamond:FireServer(diamond)
                 end
             end
+            
+            -- Method 2: Click/Touch Detection
+            if diamond:FindFirstChild("ClickDetector") then
+                diamond.ClickDetector.MouseClick:Fire()
+            end
+            if diamond:FindFirstChild("ProximityPrompt") then
+                diamond.ProximityPrompt.Triggered:Fire()
+            end
+            
+            -- Method 3: Try common remote names
+            pcall(function()
+                game.ReplicatedStorage.Remotes.CollectDiamond:FireServer(diamond)
+            end)
+            pcall(function()
+                game.ReplicatedStorage.Events.TakeDiamond:FireServer(diamond)
+            end)
+            
+            collectedDiamonds[diamondId] = true
+            lastCollectionTime = tick()
         end)
     end
 
-    local function openChest(chest)
-        local id = tostring(chest)
-        if openedChests[id] then return false end
-        local success = pcall(function()
+    local function superFastOpenChest(chest)
+        local chestId = tostring(chest)
+        if openedChests[chestId] then return end
+        
+        pcall(function()
+            -- Method 1: Remote Events
             if ReplicatedStorage:FindFirstChild("RemoteEvents") then
                 local remotes = ReplicatedStorage.RemoteEvents
                 if remotes:FindFirstChild("RequestOpenItemChest") then
                     remotes.RequestOpenItemChest:FireServer(chest)
-                    openedChests[id] = true
-                    return true
+                end
+                if remotes:FindFirstChild("OpenChest") then
+                    remotes.OpenChest:FireServer(chest)
                 end
             end
-            if chest:FindFirstChild("Position") then
-                teleportTo(chest.Position)
-                if chest:FindFirstChild("ProximityPrompt") then
-                    chest.ProximityPrompt.Triggered:Fire()
-                    openedChests[id] = true
-                elseif chest:FindFirstChild("ClickDetector") then
-                    chest.ClickDetector.MouseClick:Fire()
-                    openedChests[id] = true
-                end
+            
+            -- Method 2: Click/Touch Detection
+            if chest:FindFirstChild("ClickDetector") then
+                chest.ClickDetector.MouseClick:Fire()
             end
+            if chest:FindFirstChild("ProximityPrompt") then
+                chest.ProximityPrompt.Triggered:Fire()
+            end
+            
+            -- Method 3: Try common remote names
+            pcall(function()
+                game.ReplicatedStorage.Remotes.OpenChest:FireServer(chest)
+            end)
+            pcall(function()
+                game.ReplicatedStorage.Events.ChestOpen:FireServer(chest)
+            end)
+            
+            openedChests[chestId] = true
         end)
-        return success
     end
 
     -- Check resources availability
@@ -184,62 +210,66 @@ local function script2()
         local diamondCount = 0
         local chestCount = 0
         
-        for _, item in pairs(workspace.Items:GetChildren()) do
-            if item.Name == "Diamond" or item:FindFirstChild("Diamond") then
-                diamondCount = diamondCount + 1
-            elseif string.find(item.Name:lower(), "chest") then
-                chestCount = chestCount + 1
+        if workspace:FindFirstChild("Items") then
+            for _, item in pairs(workspace.Items:GetChildren()) do
+                if item.Name == "Diamond" or item:FindFirstChild("Diamond") or string.find(item.Name:lower(), "diamond") then
+                    diamondCount = diamondCount + 1
+                elseif string.find(item.Name:lower(), "chest") then
+                    chestCount = chestCount + 1
+                end
             end
         end
         
         return diamondCount, chestCount
     end
 
-    local function autoOpenChests()
-        if not autoChestEnabled then return end
-        local chests = {}
-        for _, item in pairs(workspace.Items:GetChildren()) do
-            if string.find(item.Name:lower(), "chest") then
-                table.insert(chests, item)
+    -- ULTRA FAST COLLECTION LOOP - 10 times per second
+    local function ultraFastAutoCollection()
+        spawn(function()
+            while autoCollectEnabled and not isPlayerDead() do
+                if workspace:FindFirstChild("Items") then
+                    -- Collect everything in one sweep
+                    for _, item in pairs(workspace.Items:GetChildren()) do
+                        -- Diamonds
+                        if item.Name == "Diamond" or item:FindFirstChild("Diamond") or string.find(item.Name:lower(), "diamond") then
+                            superFastCollectDiamond(item)
+                        end
+                        
+                        -- Chests
+                        if string.find(item.Name:lower(), "chest") then
+                            superFastOpenChest(item)
+                        end
+                    end
+                end
+                wait(0.1) -- 10 times per second
             end
-        end
-        for _, chest in ipairs(chests) do
-            openChest(chest)
-        end
+        end)
     end
 
-    local function autoCollectDiamonds()
-        if not autoCollectEnabled then return end
-        local diamonds = {}
-        for _, item in pairs(workspace.Items:GetChildren()) do
-            if item.Name == "Diamond" or item:FindFirstChild("Diamond") then
-                table.insert(diamonds, item)
-            end
-        end
-        for _, diamond in ipairs(diamonds) do
-            collectDiamondRemote(diamond)
-            collectDiamondTeleport(diamond)
-        end
-    end
-
-    -- Update GUI
+    -- Update GUI with more info
     spawn(function()
         while true do
+            local diamonds, chests = checkResources()
+            local status = "Farming"
+            
+            if isPlayerDead() then
+                status = "💀 DEAD - HOPPING!"
+            elseif diamonds == 0 and chests == 0 then
+                status = "Empty Server"
+            elseif tick() - lastCollectionTime < 2 then
+                status = "⚡ Collecting"
+            end
+            
             if guiCount and guiCount:IsA("TextLabel") then
-                diamondLabel.Text = "Diamonds: "..(guiCount.Text or "0")
+                diamondLabel.Text = string.format("💎 Diamonds: %s | 💰 D:%d C:%d | %s", 
+                    guiCount.Text or "0", diamonds, chests, status)
             end
             wait(0.2)
         end
     end)
 
-    -- Main Automation
-    spawn(function()
-        while true do
-            autoOpenChests()
-            autoCollectDiamonds()
-            wait(0.2)
-        end
-    end)
+    -- Start ultra fast collection
+    ultraFastAutoCollection()
 
     -- ====== Flying over fire ======
     local function startFlying(char)
@@ -262,15 +292,32 @@ local function script2()
     end
     player.CharacterAdded:Connect(startFlying)
 
+    -- ====== Character Respawn Handler ======
+    player.CharacterAdded:Connect(function(newChar)
+        character = newChar
+        humanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
+        humanoid = newChar:WaitForChild("Humanoid")
+        
+        -- Clear collection memory on respawn
+        collectedDiamonds = {}
+        openedChests = {}
+        
+        -- Restart flying
+        startFlying(newChar)
+        
+        -- Restart collection
+        ultraFastAutoCollection()
+        
+        print("🔄 Character respawned, restarting systems...")
+    end)
+
     -- ====== Simple Server Hop ======
-    local function simpleServerHop()
+    local function simpleServerHop(reason)
         if isHopping then return end
         isHopping = true
         
-        -- Remember current server before leaving
         rememberServer(currentServerId)
-        
-        print("🚀 Starting simple server hop...")
+        print("🚀 Server hopping - Reason:", reason)
         
         spawn(function()
             while isHopping do
@@ -284,7 +331,7 @@ local function script2()
                             TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, player)
                         end)
                         
-                        wait(0.1) -- Fast hop
+                        wait(0.1)
                     end
                 else
                     print("❌ No fresh servers, trying random")
@@ -292,33 +339,49 @@ local function script2()
                         TeleportService:Teleport(game.PlaceId, player)
                     end)
                 end
-                wait(0.5) -- Brief pause between attempts
+                wait(0.5)
             end
         end)
     end
 
-    -- Smart hop conditions with instant chest check
+    -- IMPROVED Smart hop conditions with death detection
     spawn(function()
         local checkTimer = 0
-        local maxWaitTime = 6 -- 6 seconds per server
+        local maxWaitTime = 3 -- Reduced to 3 seconds per server for faster farming
         local initialCheckDone = false
         
         while true do
-            wait(1)
-            checkTimer = checkTimer + 1
+            wait(0.5) -- Check twice per second
+            checkTimer = checkTimer + 0.5
+            
+            -- INSTANT HOP ON DEATH
+            if isPlayerDead() then
+                print("💀 Player died - instant hop!")
+                simpleServerHop("player_death")
+                break
+            end
             
             local diamonds, chests = checkResources()
             
             local shouldHop = false
             local reason = ""
             
-            -- Instant check for chests after 2 seconds
-            if not initialCheckDone and checkTimer >= 2 then
+            -- Instant check for resources after 1 second
+            if not initialCheckDone and checkTimer >= 1 then
                 initialCheckDone = true
-                if chests == 0 then
+                if chests == 0 and diamonds == 0 then
                     shouldHop = true
-                    reason = "no_chests_found_instant"
-                    print("💨 No chests detected - instant hop!")
+                    reason = "no_resources_instant"
+                    print("💨 No resources detected - instant hop!")
+                end
+            end
+            
+            -- 2-second guarantee: if no collection happened in 2 seconds, hop
+            if not shouldHop and checkTimer >= 2 then
+                if tick() - lastCollectionTime > 2 then
+                    shouldHop = true
+                    reason = "no_collection_2s"
+                    print("⏰ No collection in 2 seconds - hopping!")
                 end
             end
             
@@ -327,7 +390,7 @@ local function script2()
                 if checkTimer >= maxWaitTime then
                     shouldHop = true
                     reason = "max_time_reached"
-                elseif checkTimer >= 5 and diamonds == 0 and chests == 0 then
+                elseif checkTimer >= 2 and diamonds == 0 and chests == 0 then
                     shouldHop = true
                     reason = "no_resources_found"
                 end
@@ -336,7 +399,7 @@ local function script2()
             if shouldHop then
                 print("🎯 Hop triggered: " .. reason)
                 checkTimer = 0
-                simpleServerHop()
+                simpleServerHop(reason)
                 break
             end
         end
@@ -350,7 +413,7 @@ elseif game.PlaceId == TargetPlaceId then
     script2()
 end
 
--- ====== Simple Manual Commands ======
+-- ====== Enhanced Manual Commands ======
 _G.hopNow = function()
     if game.PlaceId == TargetPlaceId then
         isHopping = false
@@ -370,12 +433,12 @@ _G.hopNow = function()
 end
 
 _G.showServers = function()
-    print("=== SIMPLE SERVER TRACKING ===")
+    print("=== SERVER TRACKING ===")
     print("Current server:", currentServerId)
     print("Remembered servers:", #previousServers)
     
     for i, serverId in ipairs(previousServers) do
-        if i <= 10 then -- Show first 10
+        if i <= 10 then
             print("  " .. i .. ". " .. serverId)
         end
     end
@@ -391,7 +454,6 @@ _G.clearServers = function()
 end
 
 _G.forgetCurrent = function()
-    -- Remove current server from memory so we can revisit
     for i, serverId in ipairs(previousServers) do
         if serverId == currentServerId then
             table.remove(previousServers, i)
@@ -402,5 +464,19 @@ _G.forgetCurrent = function()
     print("❌ Current server not in memory")
 end
 
-print("Simple Auto Farm Diamonds - No Complex Blacklist ✅")
-print("Commands: _G.hopNow(), _G.showServers(), _G.clearServers(), _G.forgetCurrent()")
+_G.checkStatus = function()
+    local player = Players.LocalPlayer
+    print("=== FARM STATUS ===")
+    print("Player alive:", not isPlayerDead())
+    if player.Character and player.Character:FindFirstChild("Humanoid") then
+        print("Health:", player.Character.Humanoid.Health)
+    end
+    local d, c = checkResources()
+    print("Diamonds available:", d)
+    print("Chests available:", c)
+    print("Last collection:", tick() - lastCollectionTime, "seconds ago")
+end
+
+print("🚀 IMPROVED Auto Farm Diamonds - Ultra Fast Collection ✅")
+print("💎 2-Second Collection Guarantee | 💀 Instant Death Hop")
+print("📋 Commands: _G.hopNow(), _G.showServers(), _G.clearServers(), _G.forgetCurrent(), _G.checkStatus()")
