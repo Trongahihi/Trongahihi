@@ -94,23 +94,42 @@ local function script2()
     local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
     local humanoid = character:WaitForChild("Humanoid")
 
-    -- ====== Diamond GUI ======
+    -- ====== Diamond Count từ GUI gốc ======
     local guiCount = player.PlayerGui:WaitForChild("Interface"):WaitForChild("DiamondCount"):WaitForChild("Count")
 
+    -- ====== Diamond & Status GUI ======
     local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "DiamondDisplay"
+    screenGui.Name = "DiamondStatusDisplay"
     screenGui.Parent = player.PlayerGui
 
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 400, 0, 70)
+    frame.Position = UDim2.new(0.5, -200, 0.05, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    frame.BackgroundTransparency = 0.3
+    frame.BorderSizePixel = 2
+    frame.BorderColor3 = Color3.fromRGB(255, 215, 0)
+    frame.Parent = screenGui
+
     local diamondLabel = Instance.new("TextLabel")
-    diamondLabel.Size = UDim2.new(0,300,0,80)
-    diamondLabel.Position = UDim2.new(0.5,-150,0.1,0)
-    diamondLabel.BackgroundTransparency = 0.3
-    diamondLabel.BackgroundColor3 = Color3.fromRGB(0,0,0)
-    diamondLabel.TextColor3 = Color3.fromRGB(0,255,255)
-    diamondLabel.TextScaled = true
+    diamondLabel.Size = UDim2.new(1, -10, 0.5, -5)
+    diamondLabel.Position = UDim2.new(0, 5, 0, 0)
+    diamondLabel.BackgroundTransparency = 1
+    diamondLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
     diamondLabel.Font = Enum.Font.GothamBold
-    diamondLabel.Text = "💎 Diamonds: 0 | Status: Starting..."
-    diamondLabel.Parent = screenGui
+    diamondLabel.TextScaled = true
+    diamondLabel.Text = "💎 Diamonds: 0"
+    diamondLabel.Parent = frame
+
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1, -10, 0.5, -5)
+    statusLabel.Position = UDim2.new(0, 5, 0.5, 0)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.TextScaled = true
+    statusLabel.Text = "📋 Status: Starting... | Chest: 0 | Opened: 0"
+    statusLabel.Parent = frame
 
     -- ====== Player Death Detection ======
     local function isPlayerDead()
@@ -124,17 +143,15 @@ local function script2()
     -- ====== Enhanced Auto Collect & Chest ======
     local openedChests = {}
     local collectedDiamonds = {}
+    local openedCount = 0
     local autoCollectEnabled = true
-    local autoChestEnabled = true
     local lastCollectionTime = tick()
 
-    -- SUPER FAST COLLECTION - Multiple methods simultaneously
     local function superFastCollectDiamond(diamond)
         local diamondId = tostring(diamond)
         if collectedDiamonds[diamondId] then return end
         
         pcall(function()
-            -- Method 1: Remote Events
             if ReplicatedStorage:FindFirstChild("RemoteEvents") then
                 local remotes = ReplicatedStorage.RemoteEvents
                 if remotes:FindFirstChild("DiamondsClaimed") then
@@ -147,23 +164,12 @@ local function script2()
                     remotes.ClaimDiamond:FireServer(diamond)
                 end
             end
-            
-            -- Method 2: Click/Touch Detection
             if diamond:FindFirstChild("ClickDetector") then
                 diamond.ClickDetector.MouseClick:Fire()
             end
             if diamond:FindFirstChild("ProximityPrompt") then
                 diamond.ProximityPrompt.Triggered:Fire()
             end
-            
-            -- Method 3: Try common remote names
-            pcall(function()
-                game.ReplicatedStorage.Remotes.CollectDiamond:FireServer(diamond)
-            end)
-            pcall(function()
-                game.ReplicatedStorage.Events.TakeDiamond:FireServer(diamond)
-            end)
-            
             collectedDiamonds[diamondId] = true
             lastCollectionTime = tick()
         end)
@@ -174,7 +180,6 @@ local function script2()
         if openedChests[chestId] then return end
         
         pcall(function()
-            -- Method 1: Remote Events
             if ReplicatedStorage:FindFirstChild("RemoteEvents") then
                 local remotes = ReplicatedStorage.RemoteEvents
                 if remotes:FindFirstChild("RequestOpenItemChest") then
@@ -184,32 +189,19 @@ local function script2()
                     remotes.OpenChest:FireServer(chest)
                 end
             end
-            
-            -- Method 2: Click/Touch Detection
             if chest:FindFirstChild("ClickDetector") then
                 chest.ClickDetector.MouseClick:Fire()
             end
             if chest:FindFirstChild("ProximityPrompt") then
                 chest.ProximityPrompt.Triggered:Fire()
             end
-            
-            -- Method 3: Try common remote names
-            pcall(function()
-                game.ReplicatedStorage.Remotes.OpenChest:FireServer(chest)
-            end)
-            pcall(function()
-                game.ReplicatedStorage.Events.ChestOpen:FireServer(chest)
-            end)
-            
             openedChests[chestId] = true
+            openedCount = openedCount + 1
         end)
     end
 
-    -- Check resources availability
     local function checkResources()
-        local diamondCount = 0
-        local chestCount = 0
-        
+        local diamondCount, chestCount = 0, 0
         if workspace:FindFirstChild("Items") then
             for _, item in pairs(workspace.Items:GetChildren()) do
                 if item.Name == "Diamond" or item:FindFirstChild("Diamond") or string.find(item.Name:lower(), "diamond") then
@@ -219,39 +211,30 @@ local function script2()
                 end
             end
         end
-        
         return diamondCount, chestCount
     end
 
-    -- ULTRA FAST COLLECTION LOOP - 10 times per second
     local function ultraFastAutoCollection()
         spawn(function()
             while autoCollectEnabled and not isPlayerDead() do
                 if workspace:FindFirstChild("Items") then
-                    -- Collect everything in one sweep
                     for _, item in pairs(workspace.Items:GetChildren()) do
-                        -- Diamonds
                         if item.Name == "Diamond" or item:FindFirstChild("Diamond") or string.find(item.Name:lower(), "diamond") then
                             superFastCollectDiamond(item)
-                        end
-                        
-                        -- Chests
-                        if string.find(item.Name:lower(), "chest") then
+                        elseif string.find(item.Name:lower(), "chest") then
                             superFastOpenChest(item)
                         end
                     end
                 end
-                wait(0.1) -- 10 times per second
+                wait(0.1)
             end
         end)
     end
 
-    -- Update GUI with more info
     spawn(function()
         while true do
             local diamonds, chests = checkResources()
             local status = "Farming"
-            
             if isPlayerDead() then
                 status = "💀 DEAD - HOPPING!"
             elseif diamonds == 0 and chests == 0 then
@@ -259,16 +242,14 @@ local function script2()
             elseif tick() - lastCollectionTime < 2 then
                 status = "⚡ Collecting"
             end
-            
             if guiCount and guiCount:IsA("TextLabel") then
-                diamondLabel.Text = string.format("💎 Diamonds: %s | 💰 D:%d C:%d | %s", 
-                    guiCount.Text or "0", diamonds, chests, status)
+                diamondLabel.Text = "💎 Diamonds: " .. (guiCount.Text or "0")
+                statusLabel.Text = string.format("📋 Status: %s | Chest: %d | Opened: %d", status, chests, openedCount)
             end
             wait(0.2)
         end
     end)
 
-    -- Start ultra fast collection
     ultraFastAutoCollection()
 
     -- ====== Flying over fire ======
@@ -297,17 +278,11 @@ local function script2()
         character = newChar
         humanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
         humanoid = newChar:WaitForChild("Humanoid")
-        
-        -- Clear collection memory on respawn
         collectedDiamonds = {}
         openedChests = {}
-        
-        -- Restart flying
+        openedCount = 0
         startFlying(newChar)
-        
-        -- Restart collection
         ultraFastAutoCollection()
-        
         print("🔄 Character respawned, restarting systems...")
     end)
 
@@ -315,22 +290,18 @@ local function script2()
     local function simpleServerHop(reason)
         if isHopping then return end
         isHopping = true
-        
         rememberServer(currentServerId)
         print("🚀 Server hopping - Reason:", reason)
-        
         spawn(function()
             while isHopping do
                 local servers = getFreshServers(game.PlaceId)
                 if #servers > 0 then
                     for _, serverId in ipairs(servers) do
                         if not isHopping then break end
-                        
                         print("⚡ Hopping to:", serverId)
                         pcall(function()
                             TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, player)
                         end)
-                        
                         wait(0.1)
                     end
                 else
@@ -344,29 +315,22 @@ local function script2()
         end)
     end
 
-    -- IMPROVED Smart hop conditions with death detection
+    -- ====== Smart Hop Conditions ======
     spawn(function()
         local checkTimer = 0
-        local maxWaitTime = 3 -- Reduced to 3 seconds per server for faster farming
+        local maxWaitTime = 3
         local initialCheckDone = false
-        
         while true do
-            wait(0.5) -- Check twice per second
+            wait(0.5)
             checkTimer = checkTimer + 0.5
-            
-            -- INSTANT HOP ON DEATH
             if isPlayerDead() then
                 print("💀 Player died - instant hop!")
                 simpleServerHop("player_death")
                 break
             end
-            
             local diamonds, chests = checkResources()
-            
             local shouldHop = false
             local reason = ""
-            
-            -- Instant check for resources after 1 second
             if not initialCheckDone and checkTimer >= 1 then
                 initialCheckDone = true
                 if chests == 0 and diamonds == 0 then
@@ -375,8 +339,6 @@ local function script2()
                     print("💨 No resources detected - instant hop!")
                 end
             end
-            
-            -- 2-second guarantee: if no collection happened in 2 seconds, hop
             if not shouldHop and checkTimer >= 2 then
                 if tick() - lastCollectionTime > 2 then
                     shouldHop = true
@@ -384,8 +346,6 @@ local function script2()
                     print("⏰ No collection in 2 seconds - hopping!")
                 end
             end
-            
-            -- Regular checks
             if not shouldHop then
                 if checkTimer >= maxWaitTime then
                     shouldHop = true
@@ -395,16 +355,8 @@ local function script2()
                     reason = "no_resources_found"
                 end
             end
-            
             if shouldHop then
                 print("🎯 Hop triggered: " .. reason)
-                -- Reset GUI timer when hopping
-                spawn(function()
-                    statusLabel.Text = "🚀 HOPPING TO NEW SERVER..."
-                    statusLabel.TextColor3 = Color3.fromRGB(255,0,255)
-                    timerLabel.Text = "⏱️ Hopping..."
-                    timerLabel.TextColor3 = Color3.fromRGB(255,0,255)
-                end)
                 checkTimer = 0
                 simpleServerHop(reason)
                 break
@@ -425,9 +377,7 @@ _G.hopNow = function()
     if game.PlaceId == TargetPlaceId then
         isHopping = false
         wait(0.1)
-        
         rememberServer(currentServerId)
-        
         local servers = getFreshServers(game.PlaceId)
         if #servers > 0 then
             local serverId = servers[1]
@@ -443,13 +393,11 @@ _G.showServers = function()
     print("=== SERVER TRACKING ===")
     print("Current server:", currentServerId)
     print("Remembered servers:", #previousServers)
-    
     for i, serverId in ipairs(previousServers) do
         if i <= 10 then
             print("  " .. i .. ". " .. serverId)
         end
     end
-    
     if #previousServers > 10 then
         print("  ... and " .. (#previousServers - 10) .. " more")
     end
