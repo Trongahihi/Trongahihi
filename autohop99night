@@ -300,7 +300,7 @@ local function script2()
     -- Smart hop conditions with instant chest check
     spawn(function()
         local checkTimer = 0
-        local maxWaitTime = 10 -- 10 seconds per server
+        local maxWaitTime = 6 -- 6 seconds per server
         local initialCheckDone = false
         
         while true do
